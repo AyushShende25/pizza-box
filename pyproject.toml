@@ -1,0 +1,15 @@
+[project]
+name = "pizza-box"
+version = "0.1.0"
+description = "rest api for pizza-box pizzeria"
+readme = "README.md"
+requires-python = ">=3.13.5"
+dependencies = [
+    "alembic>=1.16.4",
+    "asyncpg>=0.30.0",
+    "fastapi[standard]>=0.116.1",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic-settings>=2.10.1",
+    "pyjwt>=2.10.1",
+    "sqlalchemy[asyncio]>=2.0.42",
+]
