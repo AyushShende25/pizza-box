@@ -1,13 +1,27 @@
-from fastapi import APIRouter
-
+from fastapi import APIRouter, status
+from app.core.database import SessionDep
+from app.core.redis import RedisDep
+from app.auth.service import AuthService
+from app.auth.schema import UserCreate, RegistrationResponse
+from app.auth.dependencies import FastMailDep
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@auth_router.post("/register")
-async def register():
+@auth_router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RegistrationResponse,
+)
+async def register(
+    user_data: UserCreate, session: SessionDep, redis: RedisDep, mail_dep: FastMailDep
+):
     """Register a new user"""
-    pass
+    user = await AuthService(session, redis, mail_dep).create_user(user_data)
+    return {
+        "message": "user registered successfully, verify your email",
+        "user": user,
+    }
 
 
 @auth_router.post("/verify-email")
@@ -34,7 +48,7 @@ async def logout():
     pass
 
 
-@auth_router.post("/me")
+@auth_router.get("/me")
 async def get_me():
     """Get current user information"""
     pass

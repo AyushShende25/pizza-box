@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import settings
 from app.core.base import Base
-
+from app.auth import model as auth_models
 # Import all models for automatic migrations
 
 database_url = settings.DATABASE_URL
