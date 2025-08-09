@@ -10,8 +10,9 @@ from app.auth.schema import (
     UserLogin,
     TokenResponse,
     RefreshTokenRequest,
+    UserResponse,
 )
-from app.auth.dependencies import FastMailDep
+from app.auth.dependencies import FastMailDep, CurrentUserDep
 from app.core.config import settings
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -149,12 +150,24 @@ async def refresh_tokens(
 
 
 @auth_router.post("/logout")
-async def logout():
+async def logout(
+    request: Request, session: SessionDep, redis: RedisDep, current_user: CurrentUserDep
+):
     """User logout"""
-    pass
+    refresh_token = request.cookies.get("refresh_token")
+
+    if refresh_token:
+        await AuthService(session, redis).logout_user(refresh_token)
+
+    response = JSONResponse(content={"message": "Logged out successfully"})
+
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+
+    return response
 
 
-@auth_router.get("/me")
-async def get_me():
+@auth_router.get("/me", response_model=UserResponse)
+async def get_me(current_user: CurrentUserDep):
     """Get current user information"""
-    pass
+    return current_user

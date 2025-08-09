@@ -190,3 +190,11 @@ class AuthService:
         await self.redis.revoke_refresh_token(refresh_jti)
 
         return await self.generate_tokens(user)
+
+    async def logout_user(self, refresh_token: str):
+        payload = decode_token(refresh_token)
+        if payload and payload.get("refresh"):
+            refresh_jti = payload.get("jti")
+            if refresh_jti:
+                # Remove refresh token from Redis
+                await self.redis.revoke_refresh_token(refresh_jti)
