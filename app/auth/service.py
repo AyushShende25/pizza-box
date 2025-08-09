@@ -8,7 +8,10 @@ from app.auth.utils import get_password_hash, generate_verification_token
 from app.core.config import settings
 from app.core.redis import RedisService
 from app.libs.fastmail import FastMailService
-from app.utils.templates.mail_verification import verification_email_html
+from app.utils.templates.mail_verification import (
+    verification_email_html,
+    welcome_email_html,
+)
 
 
 class AuthService:
@@ -28,6 +31,10 @@ class AuthService:
         stmt = select(User).where(User.email == email)
         result = await self.session.scalars(stmt)
         return result.first()
+
+    async def get_user_by_id(self, user_id: str) -> User | None:
+        user = await self.session.get(User, user_id)
+        return user
 
     async def create_user(self, user_credentials: UserCreate) -> User:
         existing_user = await self.get_user_by_email(user_credentials.email)
@@ -61,7 +68,7 @@ class AuthService:
             ),
         )
         # Send verification email
-        link = f"{settings.BASE_URL}/api/v1/auth/verify?token={verification_token}"
+        link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
 
         if not self.fast_mail_service:
             raise HTTPException(
@@ -75,3 +82,36 @@ class AuthService:
             body=verification_email_html(link),
         )
         return user
+
+    async def verify(self, token: str):
+        user_id = await self.redis.verify_verification_token(token=token)
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="invalid or expired token",
+            )
+        await self.redis.delete_verification_token(token)
+
+        user = await self.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="user does not exist",
+            )
+
+        user.is_verified = True
+        await self.session.commit()
+        await self.session.refresh(user)
+
+        if not self.fast_mail_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="mail service is not configured",
+            )
+
+        await self.fast_mail_service.send_mail(
+            recipients=[user.email],
+            subject="welcome to pizza-box",
+            body=welcome_email_html(user),
+        )
+        return True

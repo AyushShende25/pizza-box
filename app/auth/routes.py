@@ -24,10 +24,13 @@ async def register(
     }
 
 
-@auth_router.post("/verify-email")
-async def verify_email():
+@auth_router.get("/verify-email")
+async def verify_email(
+    session: SessionDep, redis: RedisDep, mail_dep: FastMailDep, token: str
+):
     """Verify user account"""
-    pass
+    await AuthService(session, redis, mail_dep).verify(token)
+    return {"message": "user account verified successfully"}
 
 
 @auth_router.post("/login")

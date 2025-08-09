@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379"
     BASE_URL: str = "http://localhost:8000"
+    CLIENT_URL: str = "http://localhost:3000"
 
     # App Settings
     PROJECT_NAME: str = "pizza-box api"
