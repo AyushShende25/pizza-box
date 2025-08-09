@@ -9,6 +9,7 @@ from app.auth.utils import (
     generate_verification_token,
     verify_password,
     create_token,
+    decode_token,
 )
 from app.core.config import settings
 from app.core.redis import RedisService
@@ -121,7 +122,7 @@ class AuthService:
         )
         return True
 
-    async def authenticate_user(self, credentials: UserLogin):
+    async def authenticate_user(self, credentials: UserLogin) -> User:
         user = await self.get_user_by_email(credentials.email)
 
         if not user or not verify_password(credentials.password, user.password_hash):
@@ -136,7 +137,7 @@ class AuthService:
             )
         return user
 
-    async def generate_tokens(self, user: User):
+    async def generate_tokens(self, user: User) -> tuple[str, str]:
         access_token, _ = create_token(
             sub=str(user.id),
             payload={
@@ -145,9 +146,6 @@ class AuthService:
         )
         refresh_token, refresh_payload = create_token(
             sub=str(user.id),
-            payload={
-                "email": user.email,
-            },
             refresh=True,
             expiry=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         )
@@ -159,3 +157,36 @@ class AuthService:
             expires_in=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         )
         return access_token, refresh_token
+
+    async def refresh_tokens(self, refresh_token: str) -> tuple[str, str]:
+        payload = decode_token(refresh_token)
+        if not payload or not payload.get("refresh"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+            )
+
+        user_id = payload.get("sub")
+        refresh_jti = payload.get("jti")
+        if not user_id or not refresh_jti:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token structure",
+            )
+
+        token_valid = await self.redis.validate_refresh_token(refresh_jti, user_id)
+        if not token_valid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token has been revoked",
+            )
+
+        user = await self.session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="user not found"
+            )
+
+        # Delete the old refresh-token from redis
+        await self.redis.revoke_refresh_token(refresh_jti)
+
+        return await self.generate_tokens(user)

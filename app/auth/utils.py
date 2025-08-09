@@ -17,10 +17,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_token(
-    payload: dict, sub: str, expiry: timedelta | None = None, refresh: bool = False
+    sub: str,
+    payload: dict | None = None,
+    expiry: timedelta | None = None,
+    refresh: bool = False,
 ) -> tuple[str, dict]:
     encode = {
-        **payload,
+        **(payload or {}),
         "sub": sub,
         "exp": datetime.now(timezone.utc)
         + (expiry or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)),

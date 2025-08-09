@@ -1,10 +1,16 @@
-from fastapi import APIRouter, status, Depends
+from fastapi import APIRouter, status, Depends, Request, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from app.core.database import SessionDep
 from app.core.redis import RedisDep
 from app.auth.service import AuthService
-from app.auth.schema import UserCreate, RegistrationResponse, UserLogin, TokenResponse
+from app.auth.schema import (
+    UserCreate,
+    RegistrationResponse,
+    UserLogin,
+    TokenResponse,
+    RefreshTokenRequest,
+)
 from app.auth.dependencies import FastMailDep
 from app.core.config import settings
 
@@ -92,10 +98,54 @@ async def login_for_access_token(
     }
 
 
-@auth_router.post("/refresh")
-async def refresh_tokens():
+@auth_router.post("/refresh", response_model=TokenResponse)
+async def refresh_tokens(
+    request: Request,
+    session: SessionDep,
+    redis: RedisDep,
+    refresh_request: RefreshTokenRequest | None = None,
+):
     """Refresh access token"""
-    pass
+    refresh_token = None
+    if refresh_request and refresh_request.refresh_token:
+        refresh_token = refresh_request.refresh_token
+    else:
+        refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token not provided",
+        )
+
+    access_token, new_refresh_token = await AuthService(session, redis).refresh_tokens(
+        refresh_token
+    )
+
+    response = JSONResponse(
+        content={
+            "access_token": access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer",
+        }
+    )
+    response.set_cookie(
+        "access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        "refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+    )
+
+    return response
 
 
 @auth_router.post("/logout")
