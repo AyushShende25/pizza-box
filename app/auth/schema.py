@@ -13,6 +13,11 @@ class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=255, description="password")
 
 
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
 class UserResponse(UserBase):
     id: UUID
     is_verified: bool
@@ -25,3 +30,9 @@ class UserResponse(UserBase):
 class RegistrationResponse(BaseModel):
     message: str
     user: UserResponse
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"

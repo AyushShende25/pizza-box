@@ -2,9 +2,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
 from datetime import timedelta
-from app.auth.schema import UserCreate
+from app.auth.schema import UserCreate, UserLogin
 from app.auth.model import User
-from app.auth.utils import get_password_hash, generate_verification_token
+from app.auth.utils import (
+    get_password_hash,
+    generate_verification_token,
+    verify_password,
+    create_token,
+)
 from app.core.config import settings
 from app.core.redis import RedisService
 from app.libs.fastmail import FastMailService
@@ -115,3 +120,42 @@ class AuthService:
             body=welcome_email_html(user),
         )
         return True
+
+    async def authenticate_user(self, credentials: UserLogin):
+        user = await self.get_user_by_email(credentials.email)
+
+        if not user or not verify_password(credentials.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+            )
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="please verify your account first",
+            )
+        return user
+
+    async def generate_tokens(self, user: User):
+        access_token, _ = create_token(
+            sub=str(user.id),
+            payload={
+                "email": user.email,
+            },
+        )
+        refresh_token, refresh_payload = create_token(
+            sub=str(user.id),
+            payload={
+                "email": user.email,
+            },
+            refresh=True,
+            expiry=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+        # Store in Redis with expiration
+        refresh_jti = refresh_payload["jti"]
+        await self.redis.store_refresh_token(
+            refresh_jti,
+            str(user.id),
+            expires_in=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+        return access_token, refresh_token
