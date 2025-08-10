@@ -11,6 +11,7 @@ from app.auth.schema import (
     TokenResponse,
     RefreshTokenRequest,
     UserResponse,
+    UserEmail,
 )
 from app.auth.dependencies import FastMailDep, CurrentUserDep
 from app.core.config import settings
@@ -171,3 +172,14 @@ async def logout(
 async def get_me(current_user: CurrentUserDep):
     """Get current user information"""
     return current_user
+
+
+@auth_router.post("/resend-verification")
+async def resend_verification(
+    body: UserEmail,
+    session: SessionDep,
+    redis: RedisDep,
+    mail_dep: FastMailDep,
+):
+    auth_service = AuthService(session, redis, mail_dep)
+    return await auth_service.resend_verification_token(body.email)

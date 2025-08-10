@@ -63,30 +63,7 @@ class AuthService:
         await self.session.commit()
         await self.session.refresh(user)
 
-        # generate and store verification token
-        verification_token = generate_verification_token()
-
-        await self.redis.store_verification_token(
-            token=verification_token,
-            user_id=str(user.id),
-            expires_in=timedelta(
-                seconds=settings.MAIL_VERIFICATION_TOKEN_EXPIRE_SECONDS
-            ),
-        )
-        # Send verification email
-        link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
-
-        if not self.fast_mail_service:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="mail service is not configured",
-            )
-
-        await self.fast_mail_service.send_mail(
-            recipients=[user.email],
-            subject="Verify your email",
-            body=verification_email_html(link),
-        )
+        await self._send_verification_email(user)
         return user
 
     async def verify(self, token: str):
@@ -198,3 +175,46 @@ class AuthService:
             if refresh_jti:
                 # Remove refresh token from Redis
                 await self.redis.revoke_refresh_token(refresh_jti)
+
+    async def resend_verification_token(self, email: str):
+        user = await self.get_user_by_email(email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User with this email does not exist, please register",
+            )
+        if user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is already verified",
+            )
+
+        await self._send_verification_email(user)
+
+        return {"message": "Verification email resent successfully"}
+
+    async def _send_verification_email(self, user: User):
+        verification_token = generate_verification_token()
+
+        await self.redis.store_verification_token(
+            token=verification_token,
+            user_id=str(user.id),
+            expires_in=timedelta(
+                seconds=settings.MAIL_VERIFICATION_TOKEN_EXPIRE_SECONDS
+            ),
+        )
+        # Send verification email
+        link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
+
+        if not self.fast_mail_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="mail service is not configured",
+            )
+
+        await self.fast_mail_service.send_mail(
+            recipients=[user.email],
+            subject="Verify your email",
+            body=verification_email_html(link),
+        )
+        return True

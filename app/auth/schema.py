@@ -40,3 +40,7 @@ class TokenResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str | None = None
+
+
+class UserEmail(BaseModel):
+    email: EmailStr
