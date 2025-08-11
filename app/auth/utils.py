@@ -42,5 +42,5 @@ def decode_token(token: str) -> dict | None:
         return None
 
 
-def generate_verification_token() -> str:
+def generate_urlsafe_token() -> str:
     return secrets.token_urlsafe(32)

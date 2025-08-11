@@ -12,6 +12,7 @@ from app.auth.schema import (
     RefreshTokenRequest,
     UserResponse,
     UserEmail,
+    UserPassword,
 )
 from app.auth.dependencies import FastMailDep, CurrentUserDep
 from app.core.config import settings
@@ -181,5 +182,28 @@ async def resend_verification(
     redis: RedisDep,
     mail_dep: FastMailDep,
 ):
+    """Resend verification token"""
     auth_service = AuthService(session, redis, mail_dep)
     return await auth_service.resend_verification_token(body.email)
+
+
+@auth_router.post("/forgot-password")
+async def forgot_password(
+    body: UserEmail, session: SessionDep, redis: RedisDep, mail_dep: FastMailDep
+):
+    """Forgot password"""
+    auth_service = AuthService(session, redis, mail_dep)
+    return await auth_service.forgot_pwd(body.email)
+
+
+@auth_router.post("/reset-password")
+async def reset_password(
+    token: str,
+    body: UserPassword,  # Consider using a Pydantic model
+    session: SessionDep,
+    redis: RedisDep,
+    mail_dep: FastMailDep,
+):
+    """Reset password"""
+    auth_service = AuthService(session, redis, mail_dep)
+    return await auth_service.reset_pwd(token, body.password)

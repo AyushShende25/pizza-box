@@ -6,7 +6,7 @@ from app.auth.schema import UserCreate, UserLogin
 from app.auth.model import User
 from app.auth.utils import (
     get_password_hash,
-    generate_verification_token,
+    generate_urlsafe_token,
     verify_password,
     create_token,
     decode_token,
@@ -14,9 +14,11 @@ from app.auth.utils import (
 from app.core.config import settings
 from app.core.redis import RedisService
 from app.libs.fastmail import FastMailService
-from app.utils.templates.mail_verification import (
+from app.utils.templates.email_templates import (
     verification_email_html,
     welcome_email_html,
+    forgot_password_email_html,
+    password_reset_confirmation_email_html,
 )
 
 
@@ -67,13 +69,12 @@ class AuthService:
         return user
 
     async def verify(self, token: str):
-        user_id = await self.redis.verify_verification_token(token=token)
+        user_id = await self.redis.verify_token(token=token, token_type="verification")
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="invalid or expired token",
             )
-        await self.redis.delete_verification_token(token)
 
         user = await self.get_user_by_id(user_id)
         if not user:
@@ -85,6 +86,8 @@ class AuthService:
         user.is_verified = True
         await self.session.commit()
         await self.session.refresh(user)
+
+        await self.redis.delete_token(token, token_type="verification")
 
         if not self.fast_mail_service:
             raise HTTPException(
@@ -128,10 +131,9 @@ class AuthService:
         )
         # Store in Redis with expiration
         refresh_jti = refresh_payload["jti"]
-        await self.redis.store_refresh_token(
+        await self.redis.store_refresh_jti(
             refresh_jti,
             str(user.id),
-            expires_in=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         )
         return access_token, refresh_token
 
@@ -150,7 +152,7 @@ class AuthService:
                 detail="Invalid refresh token structure",
             )
 
-        token_valid = await self.redis.validate_refresh_token(refresh_jti, user_id)
+        token_valid = await self.redis.validate_refresh_jti(refresh_jti, user_id)
         if not token_valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -163,8 +165,8 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="user not found"
             )
 
-        # Delete the old refresh-token from redis
-        await self.redis.revoke_refresh_token(refresh_jti)
+        # Delete the old refresh-token-id from redis
+        await self.redis.revoke_refresh_jti(refresh_jti)
 
         return await self.generate_tokens(user)
 
@@ -173,8 +175,8 @@ class AuthService:
         if payload and payload.get("refresh"):
             refresh_jti = payload.get("jti")
             if refresh_jti:
-                # Remove refresh token from Redis
-                await self.redis.revoke_refresh_token(refresh_jti)
+                # Remove refresh token-id from Redis
+                await self.redis.revoke_refresh_jti(refresh_jti)
 
     async def resend_verification_token(self, email: str):
         user = await self.get_user_by_email(email)
@@ -194,17 +196,81 @@ class AuthService:
         return {"message": "Verification email resent successfully"}
 
     async def _send_verification_email(self, user: User):
-        verification_token = generate_verification_token()
+        if not self.fast_mail_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="mail service is not configured",
+            )
 
-        await self.redis.store_verification_token(
-            token=verification_token,
-            user_id=str(user.id),
-            expires_in=timedelta(
-                seconds=settings.MAIL_VERIFICATION_TOKEN_EXPIRE_SECONDS
-            ),
+        verification_token = generate_urlsafe_token()
+
+        await self.redis.store_token(
+            token=verification_token, user_id=str(user.id), token_type="verification"
         )
         # Send verification email
         link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
+
+        await self.fast_mail_service.send_mail(
+            recipients=[user.email],
+            subject="Verify your email",
+            body=verification_email_html(link),
+        )
+        return True
+
+    async def forgot_pwd(self, email: str):
+        user = await self.get_user_by_email(email)
+        if not user or not user.is_verified:
+            return {
+                "message": "If an account with this email exists, you will receive a reset link"
+            }
+
+        if not self.fast_mail_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="mail service is not configured",
+            )
+
+        reset_token = generate_urlsafe_token()
+
+        await self.redis.store_token(
+            token=reset_token, user_id=str(user.id), token_type="reset"
+        )
+
+        # Send reset email
+        link = f"{settings.CLIENT_URL}/reset-password?token={reset_token}"
+
+        await self.fast_mail_service.send_mail(
+            recipients=[user.email],
+            subject="Reset your password",
+            body=forgot_password_email_html(link),
+        )
+        return {
+            "message": "If an account with this email exists, you will receive a reset link"
+        }
+
+    async def reset_pwd(self, token: str, password: str):
+        user_id = await self.redis.verify_token(token=token, token_type="reset")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="invalid or expired token",
+            )
+        await self.redis.delete_token(token, token_type="reset")
+
+        user = await self.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="user does not exist",
+            )
+
+        password_hash = get_password_hash(password)
+        user.password_hash = password_hash
+        await self.session.commit()
+        await self.session.refresh(user)
+
+        # revoke all refresh-tokens-ids for this user
+        await self.redis.revoke_all_user_refresh_jtis(str(user.id))
 
         if not self.fast_mail_service:
             raise HTTPException(
@@ -214,7 +280,8 @@ class AuthService:
 
         await self.fast_mail_service.send_mail(
             recipients=[user.email],
-            subject="Verify your email",
-            body=verification_email_html(link),
+            subject="password-reset successful",
+            body=password_reset_confirmation_email_html(user),
         )
-        return True
+
+        return {"message": "password reset successful"}

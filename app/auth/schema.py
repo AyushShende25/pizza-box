@@ -44,3 +44,7 @@ class RefreshTokenRequest(BaseModel):
 
 class UserEmail(BaseModel):
     email: EmailStr
+
+
+class UserPassword(BaseModel):
+    password: str

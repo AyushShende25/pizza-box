@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     # Mail Settings
-    MAIL_VERIFICATION_TOKEN_EXPIRE_SECONDS: int = 900
+    MAIL_TOKEN_EXPIRE_SECONDS: int = 900
     MAIL_USERNAME: str
     MAIL_PASSWORD: SecretStr
     MAIL_FROM: str
