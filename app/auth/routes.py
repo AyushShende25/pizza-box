@@ -14,7 +14,7 @@ from app.auth.schema import (
     UserEmail,
     UserPassword,
 )
-from app.auth.dependencies import FastMailDep, CurrentUserDep
+from app.auth.dependencies import CurrentUserDep
 from app.core.config import settings
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -25,11 +25,9 @@ auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
     status_code=status.HTTP_201_CREATED,
     response_model=RegistrationResponse,
 )
-async def register(
-    user_data: UserCreate, session: SessionDep, redis: RedisDep, mail_dep: FastMailDep
-):
+async def register(user_data: UserCreate, session: SessionDep, redis: RedisDep):
     """Register a new user"""
-    user = await AuthService(session, redis, mail_dep).create_user(user_data)
+    user = await AuthService(session, redis).create_user(user_data)
     return {
         "message": "user registered successfully, verify your email",
         "user": user,
@@ -37,19 +35,18 @@ async def register(
 
 
 @auth_router.get("/verify-email")
-async def verify_email(
-    session: SessionDep, redis: RedisDep, mail_dep: FastMailDep, token: str
-):
+async def verify_email(session: SessionDep, redis: RedisDep, token: str):
     """Verify user account"""
-    await AuthService(session, redis, mail_dep).verify(token)
-    return {"message": "user account verified successfully"}
+    return await AuthService(session, redis).verify(token)
 
 
 @auth_router.post("/login")
 async def login(user_credentials: UserLogin, session: SessionDep, redis: RedisDep):
     """User login"""
     auth_service = AuthService(session, redis)
+
     user = await auth_service.authenticate_user(user_credentials)
+
     access_token, refresh_token = await auth_service.generate_tokens(user)
 
     response = JSONResponse(
@@ -180,30 +177,23 @@ async def resend_verification(
     body: UserEmail,
     session: SessionDep,
     redis: RedisDep,
-    mail_dep: FastMailDep,
 ):
     """Resend verification token"""
-    auth_service = AuthService(session, redis, mail_dep)
-    return await auth_service.resend_verification_token(body.email)
+    return await AuthService(session, redis).resend_verification_token(body.email)
 
 
 @auth_router.post("/forgot-password")
-async def forgot_password(
-    body: UserEmail, session: SessionDep, redis: RedisDep, mail_dep: FastMailDep
-):
+async def forgot_password(body: UserEmail, session: SessionDep, redis: RedisDep):
     """Forgot password"""
-    auth_service = AuthService(session, redis, mail_dep)
-    return await auth_service.forgot_pwd(body.email)
+    return await AuthService(session, redis).forgot_pwd(body.email)
 
 
 @auth_router.post("/reset-password")
 async def reset_password(
     token: str,
-    body: UserPassword,  # Consider using a Pydantic model
+    body: UserPassword,
     session: SessionDep,
     redis: RedisDep,
-    mail_dep: FastMailDep,
 ):
     """Reset password"""
-    auth_service = AuthService(session, redis, mail_dep)
-    return await auth_service.reset_pwd(token, body.password)
+    return await AuthService(session, redis).reset_pwd(token, body.password)

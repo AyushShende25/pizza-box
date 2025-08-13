@@ -13,13 +13,13 @@ from app.auth.utils import (
 )
 from app.core.config import settings
 from app.core.redis import RedisService
-from app.libs.fastmail import FastMailService
 from app.utils.templates.email_templates import (
     verification_email_html,
     welcome_email_html,
     forgot_password_email_html,
     password_reset_confirmation_email_html,
 )
+from app.workers.email_tasks import send_mail_task
 
 
 class AuthService:
@@ -29,11 +29,9 @@ class AuthService:
         self,
         session: AsyncSession,
         redis: RedisService,
-        fast_mail_service: FastMailService | None = None,
     ):
         self.session = session
         self.redis = redis
-        self.fast_mail_service = fast_mail_service
 
     async def get_user_by_email(self, email: str) -> User | None:
         stmt = select(User).where(User.email == email)
@@ -89,18 +87,12 @@ class AuthService:
 
         await self.redis.delete_token(token, token_type="verification")
 
-        if not self.fast_mail_service:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="mail service is not configured",
-            )
-
-        await self.fast_mail_service.send_mail(
+        send_mail_task.delay(
             recipients=[user.email],
             subject="welcome to pizza-box",
             body=welcome_email_html(user),
         )
-        return True
+        return {"message": "user account verified successfully"}
 
     async def authenticate_user(self, credentials: UserLogin) -> User:
         user = await self.get_user_by_email(credentials.email)
@@ -196,12 +188,6 @@ class AuthService:
         return {"message": "Verification email resent successfully"}
 
     async def _send_verification_email(self, user: User):
-        if not self.fast_mail_service:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="mail service is not configured",
-            )
-
         verification_token = generate_urlsafe_token()
 
         await self.redis.store_token(
@@ -210,7 +196,7 @@ class AuthService:
         # Send verification email
         link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
 
-        await self.fast_mail_service.send_mail(
+        send_mail_task.delay(
             recipients=[user.email],
             subject="Verify your email",
             body=verification_email_html(link),
@@ -224,12 +210,6 @@ class AuthService:
                 "message": "If an account with this email exists, you will receive a reset link"
             }
 
-        if not self.fast_mail_service:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="mail service is not configured",
-            )
-
         reset_token = generate_urlsafe_token()
 
         await self.redis.store_token(
@@ -239,11 +219,12 @@ class AuthService:
         # Send reset email
         link = f"{settings.CLIENT_URL}/reset-password?token={reset_token}"
 
-        await self.fast_mail_service.send_mail(
+        send_mail_task.delay(
             recipients=[user.email],
             subject="Reset your password",
             body=forgot_password_email_html(link),
         )
+
         return {
             "message": "If an account with this email exists, you will receive a reset link"
         }
@@ -272,13 +253,7 @@ class AuthService:
         # revoke all refresh-tokens-ids for this user
         await self.redis.revoke_all_user_refresh_jtis(str(user.id))
 
-        if not self.fast_mail_service:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="mail service is not configured",
-            )
-
-        await self.fast_mail_service.send_mail(
+        send_mail_task.delay(
             recipients=[user.email],
             subject="password-reset successful",
             body=password_reset_confirmation_email_html(user),
