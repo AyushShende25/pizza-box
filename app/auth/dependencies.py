@@ -1,11 +1,16 @@
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.utils import get_authorization_scheme_param
-from fastapi import status, HTTPException, Depends, Request
+from fastapi import Depends, Request
 from typing import Annotated
 from app.core.database import SessionDep
 from app.auth.utils import decode_token
 from app.auth.model import User
 from app.libs.fastmail import FastMailService
+from app.core.exceptions import (
+    UserNotFoundError,
+    InvalidTokenError,
+    AuthenticationError,
+)
 
 
 def get_mail_service() -> FastMailService:
@@ -28,10 +33,9 @@ class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
             token = request.cookies.get("access_token")
         if not token:
             if self.auto_error:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Not authenticated",
-                    headers={"WWW-Authenticate": "Bearer"},
+                raise AuthenticationError(
+                    message="Not authenticated",
+                    error_code="MISSING_TOKEN",
                 )
             else:
                 return None
@@ -44,24 +48,26 @@ oauth2_scheme = OAuth2PasswordBearerWithCookie(tokenUrl="/api/v1/auth/token")
 async def get_current_user(
     session: SessionDep, token: Annotated[str, Depends(oauth2_scheme)]
 ):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="unauthorized access",
-    )
     payload = decode_token(token)
     if not payload:
-        raise credentials_exception
+        raise InvalidTokenError()
 
     user_id = payload.get("sub")
     if user_id is None:
-        raise credentials_exception
+        raise InvalidTokenError(
+            message="Token missing user identifier",
+            error_code="INVALID_TOKEN_STRUCTURE",
+        )
 
     if payload.get("refresh"):
-        raise credentials_exception
+        raise AuthenticationError(
+            message="Refresh token cannot be used for authentication",
+            error_code="REFRESH_TOKEN_MISUSE",
+        )
 
     user = await session.get(User, user_id)
     if not user:
-        raise credentials_exception
+        raise UserNotFoundError()
     return user
 
 

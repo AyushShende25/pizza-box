@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from fastapi import HTTPException, status
 from datetime import timedelta
 from app.auth.schema import UserCreate, UserLogin
 from app.auth.model import User
@@ -20,6 +19,15 @@ from app.utils.templates.email_templates import (
     password_reset_confirmation_email_html,
 )
 from app.workers.email_tasks import send_mail_task
+from app.core.exceptions import (
+    UserAlreadyExistsError,
+    InvalidCredentialsError,
+    InvalidRefreshTokenError,
+    InvalidTokenError,
+    UnverifiedAccountError,
+    UserNotFoundError,
+    AlreadyVerifiedError,
+)
 
 
 class AuthService:
@@ -45,10 +53,7 @@ class AuthService:
     async def create_user(self, user_credentials: UserCreate) -> User:
         existing_user = await self.get_user_by_email(user_credentials.email)
         if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="user with that email already exists",
-            )
+            raise UserAlreadyExistsError()
 
         password_hash = get_password_hash(user_credentials.password)
 
@@ -69,17 +74,11 @@ class AuthService:
     async def verify(self, token: str):
         user_id = await self.redis.verify_token(token=token, token_type="verification")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="invalid or expired token",
-            )
+            raise InvalidTokenError()
 
         user = await self.get_user_by_id(user_id)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="user does not exist",
-            )
+            raise UserNotFoundError()
 
         user.is_verified = True
         await self.session.commit()
@@ -98,15 +97,9 @@ class AuthService:
         user = await self.get_user_by_email(credentials.email)
 
         if not user or not verify_password(credentials.password, user.password_hash):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-            )
+            raise InvalidCredentialsError()
         if not user.is_verified:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="please verify your account first",
-            )
+            raise UnverifiedAccountError()
         return user
 
     async def generate_tokens(self, user: User) -> tuple[str, str]:
@@ -132,30 +125,20 @@ class AuthService:
     async def refresh_tokens(self, refresh_token: str) -> tuple[str, str]:
         payload = decode_token(refresh_token)
         if not payload or not payload.get("refresh"):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
-            )
+            raise InvalidRefreshTokenError()
 
         user_id = payload.get("sub")
         refresh_jti = payload.get("jti")
         if not user_id or not refresh_jti:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token structure",
-            )
+            raise InvalidRefreshTokenError()
 
         token_valid = await self.redis.validate_refresh_jti(refresh_jti, user_id)
         if not token_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Refresh token has been revoked",
-            )
+            raise InvalidRefreshTokenError()
 
         user = await self.session.get(User, user_id)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="user not found"
-            )
+            raise UserNotFoundError()
 
         # Delete the old refresh-token-id from redis
         await self.redis.revoke_refresh_jti(refresh_jti)
@@ -173,15 +156,10 @@ class AuthService:
     async def resend_verification_token(self, email: str):
         user = await self.get_user_by_email(email)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User with this email does not exist, please register",
-            )
+            raise UserNotFoundError()
+
         if user.is_verified:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is already verified",
-            )
+            raise AlreadyVerifiedError()
 
         await self._send_verification_email(user)
 
@@ -193,7 +171,7 @@ class AuthService:
         await self.redis.store_token(
             token=verification_token, user_id=str(user.id), token_type="verification"
         )
-        # Send verification email
+
         link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
 
         send_mail_task.delay(
@@ -216,7 +194,6 @@ class AuthService:
             token=reset_token, user_id=str(user.id), token_type="reset"
         )
 
-        # Send reset email
         link = f"{settings.CLIENT_URL}/reset-password?token={reset_token}"
 
         send_mail_task.delay(
@@ -232,18 +209,13 @@ class AuthService:
     async def reset_pwd(self, token: str, password: str):
         user_id = await self.redis.verify_token(token=token, token_type="reset")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="invalid or expired token",
-            )
+            raise InvalidTokenError()
+
         await self.redis.delete_token(token, token_type="reset")
 
         user = await self.get_user_by_id(user_id)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="user does not exist",
-            )
+            raise UserNotFoundError()
 
         password_hash = get_password_hash(password)
         user.password_hash = password_hash

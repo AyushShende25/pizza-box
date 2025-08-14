@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status, Depends, Request, HTTPException
+from fastapi import APIRouter, status, Depends, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from app.core.database import SessionDep
@@ -16,6 +16,7 @@ from app.auth.schema import (
 )
 from app.auth.dependencies import CurrentUserDep
 from app.core.config import settings
+from app.core.exceptions import InvalidRefreshTokenError
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -112,10 +113,7 @@ async def refresh_tokens(
     else:
         refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token not provided",
-        )
+        raise InvalidRefreshTokenError()
 
     access_token, new_refresh_token = await AuthService(session, redis).refresh_tokens(
         refresh_token
