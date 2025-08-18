@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from datetime import datetime
 from uuid import UUID
+from app.auth.model import UserRole
 
 
 class UserBase(BaseModel):
@@ -23,7 +24,7 @@ class UserResponse(UserBase):
     is_verified: bool
     created_at: datetime
     updated_at: datetime
-
+    role: UserRole
     model_config = ConfigDict(from_attributes=True)
 
 

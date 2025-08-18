@@ -84,3 +84,14 @@ class AlreadyVerifiedError(BadRequestError):
 class InvalidRefreshTokenError(AuthenticationError):
     error_code = "INVALID_REFRESH_TOKEN"
     message = "Invalid refresh token"
+
+
+# Pizza Errors
+class PizzaAlreadyExistsError(ConflictError):
+    error_code = "PIZZA_ALREADY_EXISTS"
+    message = "Pizza with that name already exists."
+
+
+class PizzaNotFoundError(EntityNotFoundError):
+    error_code = "PIZZA_NOT_FOUND"
+    message = "Pizza does not exist."

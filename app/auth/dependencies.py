@@ -4,12 +4,13 @@ from fastapi import Depends, Request
 from typing import Annotated
 from app.core.database import SessionDep
 from app.auth.utils import decode_token
-from app.auth.model import User
+from app.auth.model import User, UserRole
 from app.libs.fastmail import FastMailService
 from app.core.exceptions import (
     UserNotFoundError,
     InvalidTokenError,
     AuthenticationError,
+    AuthorizationError,
 )
 
 
@@ -72,3 +73,18 @@ async def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
+class RoleChecker:
+    def __init__(self, roles):
+        self.roles = roles
+
+    async def __call__(self, current_user: CurrentUserDep):
+        if current_user.role not in self.roles:
+            raise AuthorizationError()
+        return current_user
+
+
+AdminOnlyDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN]))]
+
+UserOrAdminDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN, UserRole.USER]))]
