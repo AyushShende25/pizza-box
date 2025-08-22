@@ -8,9 +8,15 @@ from app.menu.schema import (
     ToppingResponse,
     ToppingCreate,
     ToppingUpdate,
+    SizeResponse,
+    SizeCreate,
+    SizeUpdate,
+    CrustResponse,
+    CrustCreate,
+    CrustUpdate,
 )
 from app.auth.dependencies import AdminOnlyDep
-from app.menu.service import PizzaService, ToppingService
+from app.menu.service import PizzaService, ToppingService, SizeService
 
 menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
@@ -94,7 +100,7 @@ async def get_all_toppings(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_topping(
-    topping_data: ToppingCreate, session: SessionDep, _=AdminOnlyDep
+    topping_data: ToppingCreate, session: SessionDep, _: AdminOnlyDep
 ):
     """
     Admin endpoint to add new topping.
@@ -112,7 +118,7 @@ async def get_topping_by_id(topping_id: UUID, session: SessionDep):
 
 @menu_router.patch("/toppings/{topping_id}", response_model=ToppingResponse)
 async def update_topping(
-    topping_id: UUID, topping_data: ToppingUpdate, session: SessionDep, _=AdminOnlyDep
+    topping_id: UUID, topping_data: ToppingUpdate, session: SessionDep, _: AdminOnlyDep
 ):
     """
     Admin endpoint to update topping details, pricing, or availability.
@@ -121,8 +127,49 @@ async def update_topping(
 
 
 @menu_router.delete("/toppings/{topping_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_topping(topping_id: UUID, session: SessionDep, _=AdminOnlyDep):
+async def delete_topping(topping_id: UUID, session: SessionDep, _: AdminOnlyDep):
     """
     Admin endpoint to remove topping.
     """
     return await ToppingService(session).delete(topping_id)
+
+
+# ===========================================================
+# SIZES ROUTES
+# ===========================================================
+
+
+@menu_router.get("/sizes", response_model=list[SizeResponse])
+async def get_all_sizes(session: SessionDep):
+    """
+    Get all available pizza sizes with pricing multipliers.
+    """
+    return await SizeService(session).get_all()
+
+
+@menu_router.post(
+    "/sizes", response_model=SizeResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_size(size_data: SizeCreate, session: SessionDep, _: AdminOnlyDep):
+    """
+    Admin endpoint to add new pizza size option.
+    """
+    return await SizeService(session).create(size_data)
+
+
+@menu_router.patch("/sizes/{size_id}", response_model=SizeResponse)
+async def update_size(
+    size_id: UUID, size_data: SizeUpdate, session: SessionDep, _: AdminOnlyDep
+):
+    """
+    Admin endpoint to update size details or pricing multiplier.
+    """
+    return await SizeService(session).update(size_id, size_data)
+
+
+@menu_router.delete("/sizes/{size_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_size(size_id: UUID, session: SessionDep, _: AdminOnlyDep):
+    """
+    Admin endpoint to remove size option.
+    """
+    return await SizeService(session).delete(size_id)

@@ -1,13 +1,22 @@
 from sqlalchemy import select
 from uuid import UUID
-from app.menu.model import Pizza, Topping, ToppingCategory
-from app.menu.schema import PizzaCreate, PizzaUpdate, ToppingCreate, ToppingUpdate
+from app.menu.model import Pizza, Topping, ToppingCategory, Size
+from app.menu.schema import (
+    PizzaCreate,
+    PizzaUpdate,
+    ToppingCreate,
+    ToppingUpdate,
+    SizeCreate,
+    SizeUpdate,
+)
 from app.core.database import AsyncSession
 from app.core.exceptions import (
     PizzaAlreadyExistsError,
     PizzaNotFoundError,
     ToppingAlreadyExistsError,
     ToppingNotFoundError,
+    SizeAlreadyExistsError,
+    SizeNotFoundError,
 )
 
 
@@ -55,7 +64,7 @@ class PizzaService:
         await self.session.refresh(pizza)
         return pizza
 
-    async def update(self, pizza_id: UUID, data: PizzaUpdate):
+    async def update(self, pizza_id: UUID, data: PizzaUpdate) -> Pizza:
         pizza = await self.get_one(pizza_id)
 
         update_data = data.model_dump(exclude_unset=True)
@@ -145,13 +154,13 @@ class ToppingService:
         await self.session.refresh(topping)
         return topping
 
-    async def get_one(self, topping_id: UUID):
+    async def get_one(self, topping_id: UUID) -> Topping:
         topping = await self.session.get(Topping, topping_id)
         if not topping:
             raise ToppingNotFoundError()
         return topping
 
-    async def update(self, topping_id: UUID, data: ToppingUpdate):
+    async def update(self, topping_id: UUID, data: ToppingUpdate) -> Topping:
         topping = await self.get_one(topping_id)
 
         update_data = data.model_dump(exclude_unset=True)
@@ -169,6 +178,7 @@ class ToppingService:
         for field, value in update_data.items():
             setattr(topping, field, value)
 
+        self.session.add(topping)
         await self.session.commit()
         await self.session.refresh(topping)
         return topping
@@ -176,4 +186,69 @@ class ToppingService:
     async def delete(self, topping_id: UUID):
         topping = await self.get_one(topping_id)
         await self.session.delete(topping)
+        await self.session.commit()
+
+
+class SizeService:
+    def __init__(
+        self,
+        session: AsyncSession,
+    ):
+        self.session = session
+
+    async def get_all(self):
+        stmt = select(Size)
+        result = await self.session.scalars(stmt)
+        return result.all()
+
+    async def create(self, data: SizeCreate) -> Size:
+        stmt = select(Size).where(Size.name == data.name)
+        existing = await self.session.scalar(stmt)
+        if existing:
+            raise SizeAlreadyExistsError()
+
+        size_data = data.model_dump()
+
+        size = Size(**size_data)
+
+        self.session.add(size)
+        await self.session.commit()
+        await self.session.refresh(size)
+        return size
+
+    async def get_one(
+        self,
+        size_id: UUID,
+    ) -> Size:
+        size = await self.session.get(Size, size_id)
+        if not size:
+            raise SizeNotFoundError()
+        return size
+
+    async def update(self, size_id: UUID, data: SizeUpdate) -> Size:
+        size = await self.get_one(size_id)
+
+        update_data = data.model_dump(exclude_unset=True)
+
+        # check for duplicate name, if provided and changed
+        if "name" in update_data and update_data["name"] != size.name:
+            stmt = select(Size).where(Size.name == update_data["name"])
+            existing = await self.session.scalar(stmt)
+            if existing:
+                raise SizeAlreadyExistsError()
+
+        for field, value in update_data.items():
+            setattr(size, field, value)
+
+        self.session.add(size)
+        await self.session.commit()
+        await self.session.refresh(size)
+        return size
+
+    async def delete(
+        self,
+        size_id: UUID,
+    ):
+        size = await self.get_one(size_id)
+        await self.session.delete(size)
         await self.session.commit()

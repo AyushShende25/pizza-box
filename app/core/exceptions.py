@@ -105,3 +105,13 @@ class ToppingAlreadyExistsError(ConflictError):
 class ToppingNotFoundError(EntityNotFoundError):
     error_code = "TOPPING_NOT_FOUND"
     message = "Topping does not exist."
+
+
+class SizeAlreadyExistsError(ConflictError):
+    error_code = "SIZE_ALREADY_EXISTS"
+    message = "Size with that name already exists."
+
+
+class SizeNotFoundError(EntityNotFoundError):
+    error_code = "SIZE_NOT_FOUND"
+    message = "Size does not exist."
