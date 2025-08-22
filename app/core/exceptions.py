@@ -95,3 +95,13 @@ class PizzaAlreadyExistsError(ConflictError):
 class PizzaNotFoundError(EntityNotFoundError):
     error_code = "PIZZA_NOT_FOUND"
     message = "Pizza does not exist."
+
+
+class ToppingAlreadyExistsError(ConflictError):
+    error_code = "TOPPING_ALREADY_EXISTS"
+    message = "Topping with that name already exists."
+
+
+class ToppingNotFoundError(EntityNotFoundError):
+    error_code = "TOPPING_NOT_FOUND"
+    message = "Topping does not exist."

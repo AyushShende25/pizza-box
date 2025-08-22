@@ -1,9 +1,16 @@
 from fastapi import APIRouter, status
 from uuid import UUID
 from app.core.database import SessionDep
-from app.menu.schema import PizzaCreate, PizzaResponse, PizzaUpdate
+from app.menu.schema import (
+    PizzaCreate,
+    PizzaResponse,
+    PizzaUpdate,
+    ToppingResponse,
+    ToppingCreate,
+    ToppingUpdate,
+)
 from app.auth.dependencies import AdminOnlyDep
-from app.menu.service import PizzaService
+from app.menu.service import PizzaService, ToppingService
 
 menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
@@ -61,3 +68,61 @@ async def delete_pizza(pizza_id: UUID, session: SessionDep, _: AdminOnlyDep):
     Admin endpoint to  remove a pizza from menu.
     """
     return await PizzaService(session).delete(pizza_id)
+
+
+# ===========================================================
+# TOPPINGS ROUTES
+# ===========================================================
+
+
+@menu_router.get("/toppings", response_model=list[ToppingResponse])
+async def get_all_toppings(
+    session: SessionDep,
+    category: str | None = None,
+    vegetarian_only: bool | None = None,
+):
+    """
+    Get all available toppings for public viewing.
+    Filter by category (meat, vegetable, cheese, sauce, etc) or vegetarian options.
+    """
+    return await ToppingService(session).get_all(category, vegetarian_only)
+
+
+@menu_router.post(
+    "/toppings",
+    response_model=ToppingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_topping(
+    topping_data: ToppingCreate, session: SessionDep, _=AdminOnlyDep
+):
+    """
+    Admin endpoint to add new topping.
+    """
+    return await ToppingService(session).create(topping_data)
+
+
+@menu_router.get("/toppings/{topping_id}", response_model=ToppingResponse)
+async def get_topping_by_id(topping_id: UUID, session: SessionDep):
+    """
+    Get details of a specific topping.
+    """
+    return await ToppingService(session).get_one(topping_id)
+
+
+@menu_router.patch("/toppings/{topping_id}", response_model=ToppingResponse)
+async def update_topping(
+    topping_id: UUID, topping_data: ToppingUpdate, session: SessionDep, _=AdminOnlyDep
+):
+    """
+    Admin endpoint to update topping details, pricing, or availability.
+    """
+    return await ToppingService(session).update(topping_id, topping_data)
+
+
+@menu_router.delete("/toppings/{topping_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_topping(topping_id: UUID, session: SessionDep, _=AdminOnlyDep):
+    """
+    Admin endpoint to remove topping.
+    """
+    return await ToppingService(session).delete(topping_id)
