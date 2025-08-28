@@ -115,3 +115,13 @@ class SizeAlreadyExistsError(ConflictError):
 class SizeNotFoundError(EntityNotFoundError):
     error_code = "SIZE_NOT_FOUND"
     message = "Size does not exist."
+
+
+class CrustAlreadyExistsError(ConflictError):
+    error_code = "CRUST_ALREADY_EXISTS"
+    message = "Crust with that name already exists."
+
+
+class CrustNotFoundError(EntityNotFoundError):
+    error_code = "CRUST_NOT_FOUND"
+    message = "Crust does not exist."

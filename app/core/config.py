@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Bucket storage settings
+    BUCKET_ACCESS_KEY_ID: str
+    BUCKET_SECRET_ACCESS_KEY: str
+    BUCKET_ENDPOINT_URL: str
+    BUCKET_CUSTOM_DOMAIN: str
+    BUCKET_NAME: str
+    BUCKET_REGION_NAME: str
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

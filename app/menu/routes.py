@@ -16,7 +16,7 @@ from app.menu.schema import (
     CrustUpdate,
 )
 from app.auth.dependencies import AdminOnlyDep
-from app.menu.service import PizzaService, ToppingService, SizeService
+from app.menu.service import PizzaService, ToppingService, SizeService, CrustService
 
 menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
@@ -100,7 +100,9 @@ async def get_all_toppings(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_topping(
-    topping_data: ToppingCreate, session: SessionDep, _: AdminOnlyDep
+    topping_data: ToppingCreate,
+    session: SessionDep,
+    # _: AdminOnlyDep,
 ):
     """
     Admin endpoint to add new topping.
@@ -118,7 +120,10 @@ async def get_topping_by_id(topping_id: UUID, session: SessionDep):
 
 @menu_router.patch("/toppings/{topping_id}", response_model=ToppingResponse)
 async def update_topping(
-    topping_id: UUID, topping_data: ToppingUpdate, session: SessionDep, _: AdminOnlyDep
+    topping_id: UUID,
+    topping_data: ToppingUpdate,
+    session: SessionDep,
+    # _: AdminOnlyDep,
 ):
     """
     Admin endpoint to update topping details, pricing, or availability.
@@ -127,7 +132,11 @@ async def update_topping(
 
 
 @menu_router.delete("/toppings/{topping_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_topping(topping_id: UUID, session: SessionDep, _: AdminOnlyDep):
+async def delete_topping(
+    topping_id: UUID,
+    session: SessionDep,
+    # _: AdminOnlyDep,
+):
     """
     Admin endpoint to remove topping.
     """
@@ -173,3 +182,52 @@ async def delete_size(size_id: UUID, session: SessionDep, _: AdminOnlyDep):
     Admin endpoint to remove size option.
     """
     return await SizeService(session).delete(size_id)
+
+
+# ===========================================================
+# CRUST ROUTES
+# ===========================================================
+
+
+@menu_router.get("/crusts", response_model=list[CrustResponse])
+async def get_all_crusts(session: SessionDep):
+    """
+    Get all available crust options with pricing adjustments.
+    """
+    return await CrustService(session).get_all()
+
+
+@menu_router.post(
+    "/crusts", response_model=CrustResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_crust(crust_data: CrustCreate, session: SessionDep, _: AdminOnlyDep):
+    """
+    Admin endpoint to add new crust option.
+    """
+    return await CrustService(session).create(crust_data)
+
+
+@menu_router.get("/crusts/{crust_id}", response_model=CrustResponse)
+async def get_crust_by_id(crust_id: UUID, session: SessionDep):
+    """
+    Get details of a specific crust.
+    """
+    return await CrustService(session).get_one(crust_id)
+
+
+@menu_router.patch("/crusts/{crust_id}", response_model=CrustResponse)
+async def update_crust(
+    crust_id: UUID, crust_data: CrustUpdate, session: SessionDep, _: AdminOnlyDep
+):
+    """
+    Admin endpoint to update crust details or pricing.
+    """
+    return await CrustService(session).update(crust_id, crust_data)
+
+
+@menu_router.delete("/crusts/{crust_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_crust(crust_id: UUID, session: SessionDep, _: AdminOnlyDep):
+    """
+    Admin endpoint to remove crust option.
+    """
+    return await CrustService(session).delete(crust_id)

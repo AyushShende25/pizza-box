@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from uuid import UUID
-from app.menu.model import Pizza, Topping, ToppingCategory, Size
+from app.menu.model import Pizza, Topping, ToppingCategory, Size, Crust
 from app.menu.schema import (
     PizzaCreate,
     PizzaUpdate,
@@ -8,6 +8,8 @@ from app.menu.schema import (
     ToppingUpdate,
     SizeCreate,
     SizeUpdate,
+    CrustCreate,
+    CrustUpdate,
 )
 from app.core.database import AsyncSession
 from app.core.exceptions import (
@@ -17,6 +19,8 @@ from app.core.exceptions import (
     ToppingNotFoundError,
     SizeAlreadyExistsError,
     SizeNotFoundError,
+    CrustAlreadyExistsError,
+    CrustNotFoundError,
 )
 
 
@@ -251,4 +255,69 @@ class SizeService:
     ):
         size = await self.get_one(size_id)
         await self.session.delete(size)
+        await self.session.commit()
+
+
+class CrustService:
+    def __init__(
+        self,
+        session: AsyncSession,
+    ):
+        self.session = session
+
+    async def get_all(self):
+        stmt = select(Crust)
+        result = await self.session.scalars(stmt)
+        return result.all()
+
+    async def create(self, data: CrustCreate) -> Crust:
+        stmt = select(Crust).where(Crust.name == data.name)
+        existing = await self.session.scalar(stmt)
+        if existing:
+            raise CrustAlreadyExistsError()
+
+        crust_data = data.model_dump()
+
+        crust = Crust(**crust_data)
+
+        self.session.add(crust)
+        await self.session.commit()
+        await self.session.refresh(crust)
+        return crust
+
+    async def get_one(
+        self,
+        crust_id: UUID,
+    ) -> Crust:
+        crust = await self.session.get(Crust, crust_id)
+        if not crust:
+            raise CrustNotFoundError()
+        return crust
+
+    async def update(self, crust_id: UUID, data: CrustUpdate) -> Crust:
+        crust = await self.get_one(crust_id)
+
+        update_data = data.model_dump(exclude_unset=True)
+
+        # check for duplicate name, if provided and changed
+        if "name" in update_data and update_data["name"] != crust.name:
+            stmt = select(Crust).where(Crust.name == update_data["name"])
+            existing = await self.session.scalar(stmt)
+            if existing:
+                raise CrustAlreadyExistsError()
+
+        for field, value in update_data.items():
+            setattr(crust, field, value)
+
+        self.session.add(crust)
+        await self.session.commit()
+        await self.session.refresh(crust)
+        return crust
+
+    async def delete(
+        self,
+        crust_id: UUID,
+    ):
+        crust = await self.get_one(crust_id)
+        await self.session.delete(crust)
         await self.session.commit()

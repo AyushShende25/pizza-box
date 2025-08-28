@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.auth.routes import auth_router
 from app.core.exception_handlers import setup_exception_handlers
 from app.menu.routes import menu_router
+from app.uploads.routes import uploads_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -23,3 +24,4 @@ setup_exception_handlers(app)
 
 app.include_router(auth_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(menu_router, prefix=f"{settings.API_V1_STR}")
+app.include_router(uploads_router, prefix=f"{settings.API_V1_STR}")
