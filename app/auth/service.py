@@ -172,7 +172,7 @@ class AuthService:
             token=verification_token, user_id=str(user.id), token_type="verification"
         )
 
-        link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}"
+        link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}&email={user.email}"
 
         send_mail_task.delay(
             recipients=[user.email],

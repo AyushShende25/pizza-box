@@ -12,7 +12,6 @@ uploads_router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
 class EntityType(str, enum.Enum):
     PIZZA = "pizza"
-    CATEGORY = "category"
     TOPPING = "topping"
     USER = "user"
 

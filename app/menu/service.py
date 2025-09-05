@@ -1,6 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import select, asc, desc, func, and_
+from sqlalchemy.orm import selectinload
 from uuid import UUID
-from app.menu.model import Pizza, Topping, ToppingCategory, Size, Crust
+from app.menu.model import Pizza, Topping, ToppingCategory, Size, Crust, PizzaCategory
 from app.menu.schema import (
     PizzaCreate,
     PizzaUpdate,
@@ -22,6 +23,7 @@ from app.core.exceptions import (
     CrustAlreadyExistsError,
     CrustNotFoundError,
 )
+import math
 
 
 class PizzaService:
@@ -31,10 +33,84 @@ class PizzaService:
     ):
         self.session = session
 
-    async def get_all(self):
-        stmt = select(Pizza)
+    async def get_all(
+        self,
+        page: int = 1,
+        limit: int = 5,
+        sort_by: str = "created_at:asc",
+        category: PizzaCategory | None = None,
+        name: str | None = None,
+        is_available: bool | None = None,
+    ):
+        skip = (page - 1) * limit
+
+        field, order = self._parse_sort_params(sort_by)
+        sort_column = getattr(Pizza, field, Pizza.created_at)
+        sort_order = asc(sort_column) if order.lower() == "asc" else desc(sort_column)
+
+        base_query, count_query = self._build_queries(category, name, is_available)
+
+        total = await self.session.scalar(count_query)
+
+        stmt = base_query.order_by(sort_order).limit(limit).offset(skip)
+
         result = await self.session.scalars(stmt)
-        return result.all()
+        return {
+            "items": result.all(),
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "pages": math.ceil(total / limit) if total else 0,
+        }
+
+    def _parse_sort_params(self, sort_by: str) -> tuple[str, str]:
+        try:
+            parts = sort_by.split(":")
+            if len(parts) != 2:
+                raise ValueError("Invalid sort format")
+            field, order = parts
+            valid_fields = {
+                "created_at",
+                "updated_at",
+                "name",
+                "base_price",
+                "category",
+            }
+            if field not in valid_fields:
+                field = "created_at"
+
+            if order.lower() not in {"asc", "desc"}:
+                order = "desc"
+
+            return field, order
+        except ValueError:
+            return "created_at", "desc"
+
+    def _build_queries(
+        self,
+        category: PizzaCategory | None,
+        name: str | None,
+        is_available: bool | None,
+    ):
+        base_query = select(Pizza).options(selectinload(Pizza.default_toppings))
+        count_query = select(func.count()).select_from(Pizza)
+
+        filters = []
+
+        if category:
+            filters.append(Pizza.category == category)
+
+        if name:
+            filters.append(Pizza.name.ilike(f"%{name}%"))
+
+        if is_available is not None:
+            filters.append(Pizza.is_available == is_available)
+
+        if filters:
+            base_query = base_query.where(and_(*filters))
+            count_query = count_query.where(and_(*filters))
+
+        return base_query, count_query
 
     async def get_one(self, pizza_id: UUID) -> Pizza:
         pizza = await self.session.get(Pizza, pizza_id)

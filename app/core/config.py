@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     BASE_URL: str = "http://localhost:8000"
-    CLIENT_URL: str = "http://localhost:3000"
+    CLIENT_URL: str = "http://localhost:5173"
+    ADMIN_URL: str = "http://localhost:3000"
 
     # App Settings
     PROJECT_NAME: str = "pizza-box api"

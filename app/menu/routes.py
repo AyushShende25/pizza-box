@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Query
 from uuid import UUID
 from app.core.database import SessionDep
 from app.menu.schema import (
@@ -14,9 +14,11 @@ from app.menu.schema import (
     CrustResponse,
     CrustCreate,
     CrustUpdate,
+    PaginatedPizzaResponse,
 )
 from app.auth.dependencies import AdminOnlyDep
 from app.menu.service import PizzaService, ToppingService, SizeService, CrustService
+from app.menu.model import PizzaCategory
 
 menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
@@ -28,12 +30,48 @@ menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
 @menu_router.get(
     "/pizzas",
-    response_model=list[PizzaResponse],
+    response_model=PaginatedPizzaResponse,
     status_code=status.HTTP_200_OK,
 )
-async def get_all_pizzas(session: SessionDep):
-    """Get all pizzas"""
-    return await PizzaService(session).get_all()
+async def get_all_pizzas(
+    session: SessionDep,
+    page: int = Query(
+        default=1,
+        ge=1,
+        description="Page Number",
+    ),
+    limit: int = Query(
+        default=5,
+        ge=1,
+        le=100,
+        description="Items per page",
+    ),
+    sort_by: str = Query(
+        default="created_at:asc",
+        description="Sort field and order (field:asc | desc)",
+    ),
+    name: str | None = Query(
+        default=None,
+        description="Filter by pizza name",
+    ),
+    category: PizzaCategory | None = Query(
+        default=None,
+        description="Filter by pizza category: veg | non_veg",
+    ),
+    is_available: bool | None = Query(
+        default=None,
+        description="Filter by availability",
+    ),
+):
+    """Get all pizzas with pagination, sorting, and filtering options"""
+    return await PizzaService(session).get_all(
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        name=name,
+        category=category,
+        is_available=is_available,
+    )
 
 
 @menu_router.post(
@@ -41,7 +79,11 @@ async def get_all_pizzas(session: SessionDep):
     response_model=PizzaResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_pizza(pizza_data: PizzaCreate, session: SessionDep, _: AdminOnlyDep):
+async def create_pizza(
+    pizza_data: PizzaCreate,
+    session: SessionDep,
+    _: AdminOnlyDep,
+):
     """Admin endpoint to create new pizza"""
     return await PizzaService(session).create(pizza_data)
 
@@ -60,7 +102,10 @@ async def get_pizza_by_id(pizza_id: UUID, session: SessionDep):
 
 @menu_router.patch("/pizzas/{pizza_id}", response_model=PizzaResponse)
 async def update_pizza(
-    pizza_id: UUID, pizza_data: PizzaUpdate, session: SessionDep, _: AdminOnlyDep
+    pizza_id: UUID,
+    pizza_data: PizzaUpdate,
+    session: SessionDep,
+    _: AdminOnlyDep,
 ):
     """
     Admin endpoint to update pizza details.
@@ -69,7 +114,11 @@ async def update_pizza(
 
 
 @menu_router.delete("/pizzas/{pizza_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_pizza(pizza_id: UUID, session: SessionDep, _: AdminOnlyDep):
+async def delete_pizza(
+    pizza_id: UUID,
+    session: SessionDep,
+    _: AdminOnlyDep,
+):
     """
     Admin endpoint to  remove a pizza from menu.
     """
@@ -102,7 +151,7 @@ async def get_all_toppings(
 async def create_topping(
     topping_data: ToppingCreate,
     session: SessionDep,
-    # _: AdminOnlyDep,
+    _: AdminOnlyDep,
 ):
     """
     Admin endpoint to add new topping.
@@ -123,7 +172,7 @@ async def update_topping(
     topping_id: UUID,
     topping_data: ToppingUpdate,
     session: SessionDep,
-    # _: AdminOnlyDep,
+    _: AdminOnlyDep,
 ):
     """
     Admin endpoint to update topping details, pricing, or availability.
@@ -135,7 +184,7 @@ async def update_topping(
 async def delete_topping(
     topping_id: UUID,
     session: SessionDep,
-    # _: AdminOnlyDep,
+    _: AdminOnlyDep,
 ):
     """
     Admin endpoint to remove topping.
@@ -159,7 +208,11 @@ async def get_all_sizes(session: SessionDep):
 @menu_router.post(
     "/sizes", response_model=SizeResponse, status_code=status.HTTP_201_CREATED
 )
-async def create_size(size_data: SizeCreate, session: SessionDep, _: AdminOnlyDep):
+async def create_size(
+    size_data: SizeCreate,
+    session: SessionDep,
+    _: AdminOnlyDep,
+):
     """
     Admin endpoint to add new pizza size option.
     """
@@ -168,7 +221,10 @@ async def create_size(size_data: SizeCreate, session: SessionDep, _: AdminOnlyDe
 
 @menu_router.patch("/sizes/{size_id}", response_model=SizeResponse)
 async def update_size(
-    size_id: UUID, size_data: SizeUpdate, session: SessionDep, _: AdminOnlyDep
+    size_id: UUID,
+    size_data: SizeUpdate,
+    session: SessionDep,
+    _: AdminOnlyDep,
 ):
     """
     Admin endpoint to update size details or pricing multiplier.
@@ -177,7 +233,11 @@ async def update_size(
 
 
 @menu_router.delete("/sizes/{size_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_size(size_id: UUID, session: SessionDep, _: AdminOnlyDep):
+async def delete_size(
+    size_id: UUID,
+    session: SessionDep,
+    _: AdminOnlyDep,
+):
     """
     Admin endpoint to remove size option.
     """
@@ -200,7 +260,11 @@ async def get_all_crusts(session: SessionDep):
 @menu_router.post(
     "/crusts", response_model=CrustResponse, status_code=status.HTTP_201_CREATED
 )
-async def create_crust(crust_data: CrustCreate, session: SessionDep, _: AdminOnlyDep):
+async def create_crust(
+    crust_data: CrustCreate,
+    session: SessionDep,
+    _: AdminOnlyDep,
+):
     """
     Admin endpoint to add new crust option.
     """
@@ -217,7 +281,10 @@ async def get_crust_by_id(crust_id: UUID, session: SessionDep):
 
 @menu_router.patch("/crusts/{crust_id}", response_model=CrustResponse)
 async def update_crust(
-    crust_id: UUID, crust_data: CrustUpdate, session: SessionDep, _: AdminOnlyDep
+    crust_id: UUID,
+    crust_data: CrustUpdate,
+    session: SessionDep,
+    _: AdminOnlyDep,
 ):
     """
     Admin endpoint to update crust details or pricing.
@@ -226,7 +293,11 @@ async def update_crust(
 
 
 @menu_router.delete("/crusts/{crust_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_crust(crust_id: UUID, session: SessionDep, _: AdminOnlyDep):
+async def delete_crust(
+    crust_id: UUID,
+    session: SessionDep,
+    _: AdminOnlyDep,
+):
     """
     Admin endpoint to remove crust option.
     """

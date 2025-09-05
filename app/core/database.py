@@ -3,7 +3,7 @@ from fastapi import Depends
 from typing import Annotated
 from app.core.config import settings
 
-engine = create_async_engine(settings.DATABASE_URL)
+engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
 
 async_session = async_sessionmaker(bind=engine, expire_on_commit=False)
 
