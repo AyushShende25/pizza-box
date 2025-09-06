@@ -277,7 +277,7 @@ class SizeService:
         self.session = session
 
     async def get_all(self):
-        stmt = select(Size)
+        stmt = select(Size).order_by(asc(Size.sort_order))
         result = await self.session.scalars(stmt)
         return result.all()
 
@@ -342,7 +342,7 @@ class CrustService:
         self.session = session
 
     async def get_all(self):
-        stmt = select(Crust)
+        stmt = select(Crust).order_by(asc(Crust.sort_order))
         result = await self.session.scalars(stmt)
         return result.all()
 
