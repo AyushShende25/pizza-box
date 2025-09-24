@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.base import Base
 from app.auth import model as auth_models
 from app.menu import model as menu_models
+from app.cart import model as cart_models
 # Import all models for automatic migrations
 
 database_url = settings.DATABASE_URL

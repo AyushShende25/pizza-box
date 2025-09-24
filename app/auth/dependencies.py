@@ -74,6 +74,25 @@ async def get_current_user(
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
+oauth2_optional = OAuth2PasswordBearerWithCookie(
+    tokenUrl="/api/v1/auth/token",
+    auto_error=False,
+)
+
+
+async def get_optional_user(
+    session: SessionDep, token: Annotated[str | None, Depends(oauth2_optional)] = None
+) -> User | None:
+    if not token:
+        return None
+    try:
+        return await get_current_user(session, token)
+    except Exception:
+        return None
+
+
+OptionalUserDep = Annotated[User | None, Depends(get_optional_user)]
+
 
 class RoleChecker:
     def __init__(self, roles):

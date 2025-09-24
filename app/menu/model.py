@@ -16,6 +16,7 @@ from datetime import datetime
 import uuid
 import enum
 from app.core.base import Base
+from app.cart.model import CartItem, cart_item_topping
 
 
 class PizzaCategory(enum.Enum):
@@ -149,6 +150,12 @@ class Topping(Base):
 
     pizzas: Mapped[list["Pizza"]] = relationship(
         "Pizza", secondary=pizza_toppings, back_populates="default_toppings"
+    )
+
+    cart_items: Mapped[list["CartItem"]] = relationship(
+        "CartItem",
+        secondary=cart_item_topping,
+        back_populates="toppings",
     )
 
     created_at: Mapped[datetime] = mapped_column(

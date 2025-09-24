@@ -125,3 +125,16 @@ class CrustAlreadyExistsError(ConflictError):
 class CrustNotFoundError(EntityNotFoundError):
     error_code = "CRUST_NOT_FOUND"
     message = "Crust does not exist."
+
+
+# Cart Errors
+
+
+class CartNotFoundError(EntityNotFoundError):
+    error_code = "CART_NOT_FOUND"
+    message = "Cart does not exist."
+
+
+class CartItemNotFoundError(EntityNotFoundError):
+    error_code = "CART_ITEM_NOT_FOUND"
+    message = "Cart item does not exist."
