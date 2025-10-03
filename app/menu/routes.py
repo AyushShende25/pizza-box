@@ -62,6 +62,10 @@ async def get_all_pizzas(
         default=None,
         description="Filter by availability",
     ),
+    featured: bool | None = Query(
+        default=None,
+        description="Is featured pizza or not",
+    ),
 ):
     """Get all pizzas with pagination, sorting, and filtering options"""
     return await PizzaService(session).get_all(
@@ -71,6 +75,7 @@ async def get_all_pizzas(
         name=name,
         category=category,
         is_available=is_available,
+        featured=featured,
     )
 
 
@@ -133,14 +138,28 @@ async def delete_pizza(
 @menu_router.get("/toppings", response_model=list[ToppingResponse])
 async def get_all_toppings(
     session: SessionDep,
-    category: str | None = None,
-    vegetarian_only: bool | None = None,
+    category: str | None = Query(
+        default=None,
+        description="Filter by topping-category like meat, cheese, vegetable, etc",
+    ),
+    vegetarian_only: bool | None = Query(
+        default=None,
+        description="True returns veg toppings, False returns non-veg toppings",
+    ),
+    is_available: bool | None = Query(
+        default=None,
+        description="Filter by availability",
+    ),
 ):
     """
     Get all available toppings for public viewing.
     Filter by category (meat, vegetable, cheese, sauce, etc) or vegetarian options.
     """
-    return await ToppingService(session).get_all(category, vegetarian_only)
+    return await ToppingService(session).get_all(
+        category=category,
+        vegetarian_only=vegetarian_only,
+        is_available=is_available,
+    )
 
 
 @menu_router.post(
@@ -198,11 +217,14 @@ async def delete_topping(
 
 
 @menu_router.get("/sizes", response_model=list[SizeResponse])
-async def get_all_sizes(session: SessionDep):
+async def get_all_sizes(
+    session: SessionDep,
+    available_only: bool = False,
+):
     """
-    Get all available pizza sizes with pricing multipliers.
+    Get all pizza sizes with pricing multipliers.
     """
-    return await SizeService(session).get_all()
+    return await SizeService(session).get_all(available_only=available_only)
 
 
 @menu_router.post(
@@ -250,11 +272,14 @@ async def delete_size(
 
 
 @menu_router.get("/crusts", response_model=list[CrustResponse])
-async def get_all_crusts(session: SessionDep):
+async def get_all_crusts(
+    session: SessionDep,
+    available_only: bool = False,
+):
     """
-    Get all available crust options with pricing adjustments.
+    Get all crust options with pricing adjustments.
     """
-    return await CrustService(session).get_all()
+    return await CrustService(session).get_all(available_only=available_only)
 
 
 @menu_router.post(

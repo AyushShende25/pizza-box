@@ -6,7 +6,7 @@ from app.menu.schema import PizzaResponse, CrustResponse, SizeResponse, ToppingR
 
 
 class CartItemBase(BaseModel):
-    quantity: int = Field(ge=1)
+    quantity: int = Field(ge=1, le=99)
 
 
 class CartItemCreate(CartItemBase):

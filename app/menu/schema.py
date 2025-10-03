@@ -294,6 +294,7 @@ class PizzaUpdate(BaseModel):
         max_length=500,
     )
     is_available: bool | None = None
+    featured: bool | None = None
     category: PizzaCategory | None = None
     default_topping_ids: list[UUID] | None = None
 
@@ -302,6 +303,7 @@ class PizzaResponse(PizzaBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    featured: bool
     default_toppings: list[ToppingResponse] = Field(
         default=[],
         description="List of toppings that come standard with this pizza",

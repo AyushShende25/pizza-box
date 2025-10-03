@@ -4,15 +4,16 @@ from sqlalchemy import (
     TIMESTAMP,
     func,
     ForeignKey,
-    Float,
     Table,
     Column,
     Integer,
+    DECIMAL,
 )
 from datetime import datetime
 import uuid
 from app.core.base import Base
 from typing import TYPE_CHECKING
+from decimal import Decimal
 
 if TYPE_CHECKING:
     from app.menu.model import Pizza, Size, Crust, Topping
@@ -44,7 +45,7 @@ class CartItem(Base):
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    total: Mapped[float] = mapped_column(Float, nullable=False)
+    total: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False)
     cart_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cart.id"))
     cart: Mapped["Cart"] = relationship(back_populates="cart_items")
     pizza_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pizza.id"))
@@ -77,14 +78,22 @@ class Cart(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    subtotal: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    tax: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    delivery_charge: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    total: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    subtotal: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), nullable=False, default=Decimal("0.00")
+    )
+    tax: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), nullable=False, default=Decimal("0.00")
+    )
+    delivery_charge: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), nullable=False, default=Decimal("0.00")
+    )
+    total: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), nullable=False, default=Decimal("0.00")
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=True)
     user: Mapped["User"] = relationship()
     cart_items: Mapped[list["CartItem"]] = relationship(
-        "CartItem", back_populates="cart"
+        "CartItem", back_populates="cart", cascade="all, delete-orphan"
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

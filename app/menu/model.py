@@ -66,10 +66,10 @@ class Pizza(Base):
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     category: Mapped[PizzaCategory] = mapped_column(Enum(PizzaCategory), nullable=False)
-
+    featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Default toppings included in base price
     default_toppings: Mapped[list["Topping"]] = relationship(
-        "Topping", secondary=pizza_toppings, back_populates="pizzas", lazy="selectin"
+        "Topping", secondary=pizza_toppings, back_populates="pizzas"
     )
 
     created_at: Mapped[datetime] = mapped_column(

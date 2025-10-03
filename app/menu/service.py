@@ -41,6 +41,7 @@ class PizzaService:
         category: PizzaCategory | None = None,
         name: str | None = None,
         is_available: bool | None = None,
+        featured: bool | None = None,
     ):
         skip = (page - 1) * limit
 
@@ -48,11 +49,18 @@ class PizzaService:
         sort_column = getattr(Pizza, field, Pizza.created_at)
         sort_order = asc(sort_column) if order.lower() == "asc" else desc(sort_column)
 
-        base_query, count_query = self._build_queries(category, name, is_available)
+        base_query, count_query = self._build_queries(
+            category, name, is_available, featured
+        )
 
         total = await self.session.scalar(count_query)
 
-        stmt = base_query.order_by(sort_order).limit(limit).offset(skip)
+        stmt = (
+            base_query.options(selectinload(Pizza.default_toppings))
+            .order_by(sort_order)
+            .limit(limit)
+            .offset(skip)
+        )
 
         result = await self.session.scalars(stmt)
         return {
@@ -76,11 +84,8 @@ class PizzaService:
                 "base_price",
                 "category",
             }
-            if field not in valid_fields:
-                field = "created_at"
-
-            if order.lower() not in {"asc", "desc"}:
-                order = "desc"
+            field = field if field in valid_fields else "created_at"
+            order = order if order.lower() in {"asc", "desc"} else "asc"
 
             return field, order
         except ValueError:
@@ -91,8 +96,9 @@ class PizzaService:
         category: PizzaCategory | None,
         name: str | None,
         is_available: bool | None,
+        featured: bool | None,
     ):
-        base_query = select(Pizza).options(selectinload(Pizza.default_toppings))
+        base_query = select(Pizza)
         count_query = select(func.count()).select_from(Pizza)
 
         filters = []
@@ -106,23 +112,26 @@ class PizzaService:
         if is_available is not None:
             filters.append(Pizza.is_available == is_available)
 
+        if featured is not None:
+            filters.append(Pizza.featured == featured)
+
         if filters:
             base_query = base_query.where(and_(*filters))
             count_query = count_query.where(and_(*filters))
 
         return base_query, count_query
 
-    async def get_one(self, pizza_id: UUID) -> Pizza:
-        pizza = await self.session.get(Pizza, pizza_id)
+    async def get_one(self, pizza_id: UUID, load_toppings: bool = True) -> Pizza:
+        stmt = select(Pizza).where(Pizza.id == pizza_id)
+        if load_toppings:
+            stmt.options(selectinload(Pizza.default_toppings))
+        pizza = await self.session.scalar(stmt)
         if not pizza:
             raise PizzaNotFoundError()
         return pizza
 
     async def create(self, data: PizzaCreate) -> Pizza:
-        stmt = select(Pizza).where(Pizza.name == data.name)
-        existing = await self.session.scalar(stmt)
-        if existing:
-            raise PizzaAlreadyExistsError()
+        await self._check_duplicate_name(data.name)
 
         pizza_data = data.model_dump(exclude={"default_topping_ids"})
 
@@ -133,10 +142,7 @@ class PizzaService:
 
         # Attach toppings if provided
         if data.default_topping_ids:
-            topping_stmt = select(Topping).where(
-                Topping.id.in_(data.default_topping_ids)
-            )
-            toppings = (await self.session.scalars(topping_stmt)).all()
+            toppings = await self._get_toppings_by_ids(data.default_topping_ids)
             pizza.default_toppings.extend(toppings)
 
         self.session.add(pizza)
@@ -151,10 +157,7 @@ class PizzaService:
 
         # check for duplicate name, if provided and changed
         if "name" in update_data and update_data["name"] != pizza.name:
-            stmt = select(Pizza).where(Pizza.name == update_data["name"])
-            existing = await self.session.scalar(stmt)
-            if existing:
-                raise PizzaAlreadyExistsError()
+            await self._check_duplicate_name(update_data["name"])
 
         # convert to str from HttpUrl
         if "image_url" in update_data and update_data["image_url"] is not None:
@@ -166,8 +169,7 @@ class PizzaService:
             if topping_ids == []:
                 pizza.default_toppings.clear()
             else:
-                topping_stmt = select(Topping).where(Topping.id.in_(topping_ids))
-                toppings = (await self.session.scalars(topping_stmt)).all()
+                toppings = await self._get_toppings_by_ids(topping_ids)
                 pizza.default_toppings.clear()
                 pizza.default_toppings.extend(toppings)
 
@@ -181,9 +183,23 @@ class PizzaService:
         return pizza
 
     async def delete(self, pizza_id: UUID):
-        pizza = await self.get_one(pizza_id)
+        pizza = await self.get_one(pizza_id, load_toppings=False)
         await self.session.delete(pizza)
         await self.session.commit()
+
+    async def _check_duplicate_name(self, name: str, exclude_id: UUID | None = None):
+        stmt = select(Pizza).where(Pizza.name == name)
+        if exclude_id:
+            stmt = stmt.where(Pizza.id != exclude_id)
+
+        existing = await self.session.scalar(stmt)
+        if existing:
+            raise PizzaAlreadyExistsError()
+
+    async def _get_toppings_by_ids(self, topping_ids: list[UUID]) -> list[Topping]:
+        stmt = select(Topping).where(Topping.id.in_(topping_ids))
+        result = await self.session.scalars(stmt)
+        return list(result.all())
 
 
 class ToppingService:
@@ -197,31 +213,36 @@ class ToppingService:
         self,
         category: str | None = None,
         vegetarian_only: bool | None = None,
+        is_available: bool | None = None,
     ):
         stmt = select(Topping)
+
+        filters = []
+
+        if is_available is not None:
+            filters.append(Topping.is_available == is_available)
 
         if category:
             try:
                 enum_category = ToppingCategory(category)
-                stmt = stmt.where(Topping.category == enum_category)
+                filters.append(Topping.category == enum_category)
             except ValueError:
                 return []
 
-        if vegetarian_only is True:
-            # veg toppings
-            stmt = stmt.where(Topping.is_vegetarian)
-        if vegetarian_only is False:
-            # non-veg toppings
-            stmt = stmt.where(Topping.is_vegetarian == False)
+        if vegetarian_only is not None:
+            # vegetarian_only: True -> veg toppings
+            # vegetarian_only: False -> non-veg toppings
+            filters.append(Topping.is_vegetarian == vegetarian_only)
 
+        if filters:
+            stmt = stmt.where(and_(*filters))
+
+        stmt = stmt.order_by(asc(Topping.name))
         result = await self.session.scalars(stmt)
         return result.all()
 
     async def create(self, data: ToppingCreate) -> Topping:
-        stmt = select(Topping).where(Topping.name == data.name)
-        existing = await self.session.scalar(stmt)
-        if existing:
-            raise ToppingAlreadyExistsError()
+        await self._check_duplicate_name(data.name)
 
         topping_data = data.model_dump()
 
@@ -247,10 +268,7 @@ class ToppingService:
 
         # check for duplicate name, if provided and changed
         if "name" in update_data and update_data["name"] != topping.name:
-            stmt = select(Topping).where(Topping.name == update_data["name"])
-            existing = await self.session.scalar(stmt)
-            if existing:
-                raise ToppingAlreadyExistsError()
+            await self._check_duplicate_name(update_data["name"])
 
         if "image_url" in update_data and update_data["image_url"] is not None:
             update_data["image_url"] = str(update_data["image_url"])
@@ -268,6 +286,12 @@ class ToppingService:
         await self.session.delete(topping)
         await self.session.commit()
 
+    async def _check_duplicate_name(self, name: str):
+        stmt = select(Topping).where(Topping.name == name)
+        existing = await self.session.scalar(stmt)
+        if existing:
+            raise ToppingAlreadyExistsError()
+
 
 class SizeService:
     def __init__(
@@ -276,21 +300,17 @@ class SizeService:
     ):
         self.session = session
 
-    async def get_all(self):
+    async def get_all(self, available_only: bool = False):
         stmt = select(Size).order_by(asc(Size.sort_order))
+        if available_only:
+            stmt = stmt.where(Size.is_available == True)
         result = await self.session.scalars(stmt)
         return result.all()
 
     async def create(self, data: SizeCreate) -> Size:
-        stmt = select(Size).where(Size.name == data.name)
-        existing = await self.session.scalar(stmt)
-        if existing:
-            raise SizeAlreadyExistsError()
+        await self._check_duplicate_name(data.name)
 
-        size_data = data.model_dump()
-
-        size = Size(**size_data)
-
+        size = Size(**data.model_dump())
         self.session.add(size)
         await self.session.commit()
         await self.session.refresh(size)
@@ -312,10 +332,7 @@ class SizeService:
 
         # check for duplicate name, if provided and changed
         if "name" in update_data and update_data["name"] != size.name:
-            stmt = select(Size).where(Size.name == update_data["name"])
-            existing = await self.session.scalar(stmt)
-            if existing:
-                raise SizeAlreadyExistsError()
+            await self._check_duplicate_name(update_data["name"])
 
         for field, value in update_data.items():
             setattr(size, field, value)
@@ -333,6 +350,12 @@ class SizeService:
         await self.session.delete(size)
         await self.session.commit()
 
+    async def _check_duplicate_name(self, name: str):
+        stmt = select(Size).where(Size.name == name)
+        existing = await self.session.scalar(stmt)
+        if existing:
+            raise SizeAlreadyExistsError()
+
 
 class CrustService:
     def __init__(
@@ -341,21 +364,17 @@ class CrustService:
     ):
         self.session = session
 
-    async def get_all(self):
+    async def get_all(self, available_only: bool = False):
         stmt = select(Crust).order_by(asc(Crust.sort_order))
+        if available_only:
+            stmt = stmt.where(Crust.is_available == True)
         result = await self.session.scalars(stmt)
         return result.all()
 
     async def create(self, data: CrustCreate) -> Crust:
-        stmt = select(Crust).where(Crust.name == data.name)
-        existing = await self.session.scalar(stmt)
-        if existing:
-            raise CrustAlreadyExistsError()
+        await self._check_duplicate_name(data.name)
 
-        crust_data = data.model_dump()
-
-        crust = Crust(**crust_data)
-
+        crust = Crust(**data.model_dump())
         self.session.add(crust)
         await self.session.commit()
         await self.session.refresh(crust)
@@ -377,10 +396,7 @@ class CrustService:
 
         # check for duplicate name, if provided and changed
         if "name" in update_data and update_data["name"] != crust.name:
-            stmt = select(Crust).where(Crust.name == update_data["name"])
-            existing = await self.session.scalar(stmt)
-            if existing:
-                raise CrustAlreadyExistsError()
+            await self._check_duplicate_name(update_data["name"])
 
         for field, value in update_data.items():
             setattr(crust, field, value)
@@ -397,3 +413,9 @@ class CrustService:
         crust = await self.get_one(crust_id)
         await self.session.delete(crust)
         await self.session.commit()
+
+    async def _check_duplicate_name(self, name: str):
+        stmt = select(Crust).where(Crust.name == name)
+        existing = await self.session.scalar(stmt)
+        if existing:
+            raise CrustAlreadyExistsError()
