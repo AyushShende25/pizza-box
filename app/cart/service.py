@@ -2,7 +2,7 @@ from app.core.database import AsyncSession
 from app.cart.schema import CartItemCreate, CartItemUpdate
 from app.cart.model import Cart, CartItem
 from app.menu.service import PizzaService, SizeService, CrustService
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 from app.menu.model import Topping
 from uuid import UUID
@@ -265,7 +265,10 @@ class CartService:
 
     async def _recalculate_cart_totals(self, cart: Cart):
         """Recalculate cart totals"""
-        subtotal = sum(item.total for item in cart.cart_items)
+        result = await self.session.execute(
+            select(func.sum(CartItem.total)).where(CartItem.cart_id == cart.id)
+        )
+        subtotal = result.scalar() or Decimal("0")
         cart.subtotal = Decimal(subtotal)
         cart.tax = subtotal * Decimal(TAX_RATE)
         cart.delivery_charge = (

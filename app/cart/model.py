@@ -26,13 +26,13 @@ cart_item_topping = Table(
     Column(
         "cart_item_id",
         Uuid(as_uuid=True),
-        ForeignKey("cart_item.id"),
+        ForeignKey("cart_item.id", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(
         "topping_id",
         Uuid(as_uuid=True),
-        ForeignKey("topping.id"),
+        ForeignKey("topping.id", ondelete="RESTRICT"),
         primary_key=True,
     ),
 )
@@ -46,13 +46,21 @@ class CartItem(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     total: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False)
-    cart_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cart.id"))
+    cart_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("cart.id", ondelete="CASCADE")
+    )
     cart: Mapped["Cart"] = relationship(back_populates="cart_items")
-    pizza_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pizza.id"))
+    pizza_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pizza.id", ondelete="RESTRICT")
+    )
     pizza: Mapped["Pizza"] = relationship()
-    size_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("size.id"))
+    size_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("size.id", ondelete="RESTRICT")
+    )
     size: Mapped["Size"] = relationship()
-    crust_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("crust.id"))
+    crust_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("crust.id", ondelete="RESTRICT")
+    )
     crust: Mapped["Crust"] = relationship()
 
     toppings: Mapped[list["Topping"]] = relationship(
@@ -90,7 +98,9 @@ class Cart(Base):
     total: Mapped[Decimal] = mapped_column(
         DECIMAL(10, 2), nullable=False, default=Decimal("0.00")
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     user: Mapped["User"] = relationship()
     cart_items: Mapped[list["CartItem"]] = relationship(
         "CartItem", back_populates="cart", cascade="all, delete-orphan"
