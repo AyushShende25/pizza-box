@@ -143,3 +143,8 @@ class CartItemNotFoundError(EntityNotFoundError):
 class MaxAddressesExceededError(BadRequestError):
     error_code = "MAX_ADDRESSES_PER_USER_EXCEEDED"
     message = "User already has too many addresses"
+
+
+class AddressNotFoundError(EntityNotFoundError):
+    error_code = "ADDRESS_NOT_FOUND"
+    message = "Address with that id does not exist."
