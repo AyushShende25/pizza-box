@@ -138,3 +138,8 @@ class CartNotFoundError(EntityNotFoundError):
 class CartItemNotFoundError(EntityNotFoundError):
     error_code = "CART_ITEM_NOT_FOUND"
     message = "Cart item does not exist."
+
+
+class MaxAddressesExceededError(BadRequestError):
+    error_code = "MAX_ADDRESSES_PER_USER_EXCEEDED"
+    message = "User already has too many addresses"

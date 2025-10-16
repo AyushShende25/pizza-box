@@ -1,9 +1,10 @@
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Uuid, TIMESTAMP, func, Boolean, Enum
 from datetime import datetime
 import uuid
 import enum
 from app.core.base import Base
+from app.address.model import Address
 
 
 class UserRole(enum.Enum):
@@ -38,6 +39,10 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    addresses: Mapped[list["Address"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
