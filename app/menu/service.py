@@ -12,7 +12,7 @@ from app.menu.schema import (
     CrustCreate,
     CrustUpdate,
 )
-from app.core.database import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     PizzaAlreadyExistsError,
     PizzaNotFoundError,
@@ -124,7 +124,7 @@ class PizzaService:
     async def get_one(self, pizza_id: UUID, load_toppings: bool = True) -> Pizza:
         stmt = select(Pizza).where(Pizza.id == pizza_id)
         if load_toppings:
-            stmt.options(selectinload(Pizza.default_toppings))
+            stmt = stmt.options(selectinload(Pizza.default_toppings))
         pizza = await self.session.scalar(stmt)
         if not pizza:
             raise PizzaNotFoundError()
@@ -147,8 +147,12 @@ class PizzaService:
 
         self.session.add(pizza)
         await self.session.commit()
-        await self.session.refresh(pizza)
-        return pizza
+        loaded_pizza = await self.session.execute(
+            select(Pizza)
+            .options(selectinload(Pizza.default_toppings))
+            .where(Pizza.id == pizza.id)
+        )
+        return loaded_pizza.scalar_one()
 
     async def update(self, pizza_id: UUID, data: PizzaUpdate) -> Pizza:
         pizza = await self.get_one(pizza_id)
@@ -179,8 +183,12 @@ class PizzaService:
 
         self.session.add(pizza)
         await self.session.commit()
-        await self.session.refresh(pizza)
-        return pizza
+        loaded_pizza = await self.session.execute(
+            select(Pizza)
+            .options(selectinload(Pizza.default_toppings))
+            .where(Pizza.id == pizza.id)
+        )
+        return loaded_pizza.scalar_one()
 
     async def delete(self, pizza_id: UUID):
         pizza = await self.get_one(pizza_id, load_toppings=False)

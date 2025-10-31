@@ -1,4 +1,4 @@
-from app.core.database import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.cart.schema import CartItemCreate, CartItemUpdate
 from app.cart.model import Cart, CartItem
 from app.menu.service import PizzaService, SizeService, CrustService
@@ -105,8 +105,17 @@ class CartService:
                 existing_item.quantity += guest_item.quantity
                 existing_item.total = self._calculate_item_total(existing_item)
             else:
-                # Move guest item to user cart
-                guest_item.cart_id = user_cart.id
+                # Copy guest item to user cart
+                new_item = CartItem(
+                    cart_id=user_cart.id,
+                    pizza_id=guest_item.pizza_id,
+                    size_id=guest_item.size_id,
+                    crust_id=guest_item.crust_id,
+                    quantity=guest_item.quantity,
+                    total=guest_item.total,
+                    toppings=guest_item.toppings,
+                )
+                self.session.add(new_item)
 
         # Delete guest cart - cascade will handle guest_cart_items automatically!
         await self.session.delete(guest_cart)

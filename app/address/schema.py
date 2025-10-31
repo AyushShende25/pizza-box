@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 from datetime import datetime
-from app.auth.schema import UserResponse
 
 
 class AddressBase(BaseModel):
@@ -53,4 +52,4 @@ class AddressResponse(AddressBase):
 
     id: UUID
     created_at: datetime
-    user: UserResponse
+    user_id: UUID

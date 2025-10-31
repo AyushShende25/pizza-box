@@ -6,17 +6,18 @@ from sqlalchemy import (
     func,
     Boolean,
     ForeignKey,
-    Float,
     Table,
     Column,
     Enum,
     Text,
+    DECIMAL,
 )
 from datetime import datetime
 import uuid
 import enum
 from app.core.base import Base
 from app.cart.model import CartItem, cart_item_topping
+from decimal import Decimal
 
 
 class PizzaCategory(enum.Enum):
@@ -60,8 +61,8 @@ class Pizza(Base):
     )
     name: Mapped[str] = mapped_column(String(length=255), nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    base_price: Mapped[float] = mapped_column(
-        Float, nullable=False, comment="Base price for regular size"
+    base_price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), nullable=False, comment="Base price for regular size"
     )
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -96,7 +97,9 @@ class Size(Base):
     )
     name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    multiplier: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    multiplier: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), default=Decimal("1.00"), nullable=False
+    )
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(nullable=False, default=0)
 
@@ -118,7 +121,9 @@ class Crust(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    additional_price: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    additional_price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2), default=Decimal("0.00"), nullable=False
+    )
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(nullable=False, default=0)
 
@@ -140,7 +145,7 @@ class Topping(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    price: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False)
     category: Mapped[ToppingCategory] = mapped_column(
         Enum(ToppingCategory), nullable=False
     )

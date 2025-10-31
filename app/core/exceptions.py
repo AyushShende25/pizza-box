@@ -148,3 +148,19 @@ class MaxAddressesExceededError(BadRequestError):
 class AddressNotFoundError(EntityNotFoundError):
     error_code = "ADDRESS_NOT_FOUND"
     message = "Address with that id does not exist."
+
+
+# Order Errors
+class OrderNotFoundError(EntityNotFoundError):
+    error_code = "ORDER_NOT_FOUND"
+    message = "Order with that id does not exist."
+
+
+class OrderCancelFailure(BadRequestError):
+    error_code = "ORDER_CANCEL_FAILURE"
+    message = "failed to cancel this order"
+
+
+class OrderStatusUpdateError(BadRequestError):
+    error_code = "ORDER_STATUS_UPDATE_ERROR"
+    message = "failed to update order-status"

@@ -1,9 +1,8 @@
 from sqlalchemy import update, select, func
-from app.core.database import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     MaxAddressesExceededError,
     AddressNotFoundError,
-    AuthorizationError,
 )
 from app.auth.model import User
 from app.address.schema import AddressCreate, AddressUpdate
@@ -25,7 +24,10 @@ class AddressesService:
             raise MaxAddressesExceededError()
 
         address_data_dict = data.model_dump()
-        if address_data_dict.get("is_default"):
+
+        if address_count == 0:
+            address_data_dict["is_default"] = True
+        elif address_data_dict.get("is_default"):
             await self.session.execute(
                 update(Address)
                 .where(Address.user_id == user.id, Address.is_default.is_(True))
@@ -46,13 +48,16 @@ class AddressesService:
             )
         ).all()
 
-    async def update(self, address_id: UUID, data: AddressUpdate, user: User):
-        address = await self.session.get(Address, address_id)
+    async def get_one(self, address_id: UUID, user_id: UUID):
+        address = await self.session.scalar(
+            select(Address).where(Address.id == address_id, Address.user_id == user_id)
+        )
         if not address:
             raise AddressNotFoundError()
+        return address
 
-        if address.user_id != user.id:
-            raise AuthorizationError()
+    async def update(self, address_id: UUID, data: AddressUpdate, user: User):
+        address = await self.get_one(address_id, user.id)
 
         update_data = data.model_dump(exclude_unset=True)
 
@@ -72,11 +77,7 @@ class AddressesService:
         return address
 
     async def delete(self, address_id: UUID, user: User):
-        address = await self.session.get(Address, address_id)
-        if not address:
-            raise AddressNotFoundError()
-        if address.user_id != user.id:
-            raise AuthorizationError()
+        address = await self.get_one(address_id, user.id)
 
         is_default = address.is_default
 
