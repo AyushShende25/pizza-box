@@ -1,14 +1,41 @@
-from pydantic import BaseModel, Field, ConfigDict, HttpUrl, computed_field
+from pydantic import Field, HttpUrl, computed_field
 from uuid import UUID
 from datetime import datetime
 from app.menu.model import PizzaCategory, ToppingCategory
 from decimal import Decimal
+from app.core.base_schema import BaseSchema
+
+
+class PaginationParams(BaseSchema):
+    page: int = Field(default=1, ge=1, description="Page number")
+    limit: int = Field(default=10, ge=1, le=100, description="Items per page")
+
+
+class SortablePaginationParams(PaginationParams):
+    sort_by: str = Field(
+        default="created_at:asc",
+        description="Sort field and order (e.g., 'created_at:asc' or 'created_at:desc')",
+    )
 
 
 # Topping Schemas
 
 
-class ToppingBase(BaseModel):
+class ToppingQueryParams(BaseSchema):
+    category: ToppingCategory | None = Field(
+        default=None,
+        description="Filter by topping category (meat, cheese, vegetable, etc.)",
+    )
+    vegetarian_only: bool | None = Field(
+        default=None,
+        description="True for vegetarian toppings, False for non-veg",
+    )
+    is_available: bool | None = Field(
+        default=None, description="Filter by availability"
+    )
+
+
+class ToppingBase(BaseSchema):
     name: str = Field(
         min_length=1,
         max_length=100,
@@ -55,7 +82,7 @@ class ToppingCreate(ToppingBase):
     pass
 
 
-class ToppingUpdate(BaseModel):
+class ToppingUpdate(BaseSchema):
     name: str | None = Field(
         default=None,
         min_length=1,
@@ -81,8 +108,6 @@ class ToppingUpdate(BaseModel):
 
 
 class ToppingResponse(ToppingBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
 
@@ -90,7 +115,13 @@ class ToppingResponse(ToppingBase):
 # Size schemas
 
 
-class SizeBase(BaseModel):
+class SizeQueryParams(BaseSchema):
+    available_only: bool = Field(
+        default=False, description="If True, returns only available sizes"
+    )
+
+
+class SizeBase(BaseSchema):
     name: str = Field(
         min_length=1,
         max_length=50,
@@ -125,7 +156,7 @@ class SizeCreate(SizeBase):
     pass
 
 
-class SizeUpdate(BaseModel):
+class SizeUpdate(BaseSchema):
     name: str | None = Field(
         default=None,
         min_length=1,
@@ -148,8 +179,6 @@ class SizeUpdate(BaseModel):
 
 
 class SizeResponse(SizeBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
 
@@ -157,7 +186,13 @@ class SizeResponse(SizeBase):
 # Crust schemas
 
 
-class CrustBase(BaseModel):
+class CrustQueryParams(BaseSchema):
+    available_only: bool = Field(
+        default=False, description="If True, returns only available crusts"
+    )
+
+
+class CrustBase(BaseSchema):
     name: str = Field(
         min_length=1,
         max_length=100,
@@ -195,7 +230,7 @@ class CrustCreate(CrustBase):
     pass
 
 
-class CrustUpdate(BaseModel):
+class CrustUpdate(BaseSchema):
     name: str | None = Field(
         default=None,
         min_length=1,
@@ -219,8 +254,6 @@ class CrustUpdate(BaseModel):
 
 
 class CrustResponse(CrustBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
 
@@ -228,7 +261,7 @@ class CrustResponse(CrustBase):
 # Pizza Schemas
 
 
-class PizzaBase(BaseModel):
+class PizzaBase(BaseSchema):
     name: str = Field(
         min_length=1,
         max_length=255,
@@ -272,7 +305,7 @@ class PizzaCreate(PizzaBase):
     )
 
 
-class PizzaUpdate(BaseModel):
+class PizzaUpdate(BaseSchema):
     name: str | None = Field(
         default=None,
         min_length=1,
@@ -300,8 +333,6 @@ class PizzaUpdate(BaseModel):
 
 
 class PizzaResponse(PizzaBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     featured: bool
     default_toppings: list[ToppingResponse] = Field(
@@ -312,7 +343,20 @@ class PizzaResponse(PizzaBase):
     updated_at: datetime
 
 
-class PaginatedPizzaResponse(BaseModel):
+class PizzaQueryParams(SortablePaginationParams):
+    name: str | None = Field(
+        default=None, description="Filter by pizza name (partial match supported)"
+    )
+    category: PizzaCategory | None = Field(
+        default=None, description="Filter by pizza category (veg | non_veg)"
+    )
+    is_available: bool | None = Field(
+        default=None, description="Filter by availability"
+    )
+    featured: bool | None = Field(default=None, description="Filter by featured pizzas")
+
+
+class PaginatedPizzaResponse(BaseSchema):
     total: int = Field(ge=0, description="Total number of pizzas")
     page: int = Field(ge=1, description="Current page number")
     limit: int = Field(ge=1, le=100, description="Items per page")

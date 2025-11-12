@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import Field, EmailStr
 from datetime import datetime
 from uuid import UUID
 from app.auth.model import UserRole
+from app.core.base_schema import BaseSchema
 
 
-class UserBase(BaseModel):
+class UserBase(BaseSchema):
     email: EmailStr
     first_name: str = Field(min_length=1, max_length=50, description="user first name")
     last_name: str = Field(min_length=1, max_length=50, description="user last name")
@@ -14,7 +15,7 @@ class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=255, description="password")
 
 
-class UserLogin(BaseModel):
+class UserLogin(BaseSchema):
     email: EmailStr
     password: str
 
@@ -25,27 +26,26 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
     role: UserRole
-    model_config = ConfigDict(from_attributes=True)
 
 
-class RegistrationResponse(BaseModel):
+class RegistrationResponse(BaseSchema):
     message: str
     user: UserResponse
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(BaseSchema):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
 
 
-class RefreshTokenRequest(BaseModel):
+class RefreshTokenRequest(BaseSchema):
     refresh_token: str | None = None
 
 
-class UserEmail(BaseModel):
+class UserEmail(BaseSchema):
     email: EmailStr
 
 
-class UserPassword(BaseModel):
+class UserPassword(BaseSchema):
     password: str

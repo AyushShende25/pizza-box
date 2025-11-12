@@ -164,3 +164,17 @@ class OrderCancelFailure(BadRequestError):
 class OrderStatusUpdateError(BadRequestError):
     error_code = "ORDER_STATUS_UPDATE_ERROR"
     message = "failed to update order-status"
+
+
+# Payment Erros
+
+
+class PaymentCreationError(AppException):
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    error_code = "PAYMENT_CREATION_FAILED"
+    message = "failed to make this payment"
+
+
+class PaymentNotFoundError(EntityNotFoundError):
+    error_code = "PAYMENT_NOT_FOUND"
+    message = "Payment not found"

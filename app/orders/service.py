@@ -16,6 +16,7 @@ from app.orders.model import (
     OrderItemTopping,
     OrderStatus,
     PaymentStatus,
+    PaymentMethod,
 )
 from app.address.service import AddressesService
 from app.core.exceptions import (
@@ -43,6 +44,8 @@ class OrderService:
     async def create_order(self, data: OrderCreate, user_id: uuid.UUID):
         address = await AddressesService(self.session).get_one(data.address_id, user_id)
 
+        payment_method = getattr(data, "payment_method", PaymentMethod.DIGITAL)
+
         order = Order(
             order_no=generate_order_num(),
             user_id=user_id,
@@ -53,6 +56,7 @@ class OrderService:
             tax=Decimal("0.00"),
             delivery_charge=DELIVERY_CHARGE,
             total=Decimal("0.00"),
+            payment_method=payment_method,
         )
 
         subtotal = Decimal("0.00")

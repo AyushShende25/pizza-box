@@ -8,6 +8,7 @@ from app.uploads.routes import uploads_router
 from app.cart.routes import cart_router
 from app.address.routes import address_router
 from app.orders.routes import orders_router
+from app.payments.routes import payments_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -31,3 +32,4 @@ app.include_router(uploads_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(cart_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(address_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(orders_router, prefix=f"{settings.API_V1_STR}")
+app.include_router(payments_router, prefix=f"{settings.API_V1_STR}")

@@ -1,11 +1,11 @@
 from fastapi import APIRouter
-from pydantic import BaseModel, field_validator
+from pydantic import field_validator
 import uuid
 import enum
 from app.libs.bucket import client
 from app.core.config import settings
 from app.core.exceptions import AppException
-
+from app.core.base_schema import BaseSchema
 
 uploads_router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
@@ -16,7 +16,7 @@ class EntityType(str, enum.Enum):
     USER = "user"
 
 
-class UploadRequest(BaseModel):
+class UploadRequest(BaseSchema):
     entity_type: EntityType
     content_type: str
 

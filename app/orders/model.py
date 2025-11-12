@@ -9,6 +9,7 @@ from app.core.base import Base
 
 if TYPE_CHECKING:
     from app.auth.model import User
+    from app.payments.model import Payment
 
 
 class OrderStatus(enum.Enum):
@@ -28,8 +29,7 @@ class PaymentStatus(enum.Enum):
 
 class PaymentMethod(enum.Enum):
     COD = "cod"
-    CARD = "card"
-    UPI = "upi"
+    DIGITAL = "digital"
 
 
 class OrderItemTopping(Base):
@@ -196,6 +196,11 @@ class Order(Base):
         Enum(PaymentMethod),
         nullable=False,
         default=PaymentMethod.COD,
+    )
+    payments: Mapped[list["Payment"]] = relationship(
+        "Payment",
+        back_populates="order",
+        cascade="all, delete-orphan",
     )
 
     order_items: Mapped[list["OrderItem"]] = relationship(

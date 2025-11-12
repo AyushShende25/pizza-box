@@ -6,10 +6,12 @@ from app.orders.schema import (
     OrderResponse,
     OrderUpdate,
     PaginatedOrderResponse,
+    UserOrderQueryParams,
+    AdminOrderQueryParams,
 )
 from app.orders.service import OrderService
 from uuid import UUID
-from app.orders.model import OrderStatus, PaymentStatus
+from typing import Annotated
 
 orders_router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -34,31 +36,15 @@ async def create_new_order(
 async def get_my_orders(
     session: SessionDep,
     current_user: UserOrAdminDep,
-    page: int = Query(
-        default=1,
-        ge=1,
-        description="Page Number",
-    ),
-    limit: int = Query(
-        default=10,
-        ge=1,
-        le=100,
-        description="Items per page",
-    ),
-    order_status: OrderStatus | None = Query(
-        None, description="Filter by order status"
-    ),
-    payment_status: PaymentStatus | None = Query(
-        None, description="Filter by payment status"
-    ),
+    order_params: Annotated[UserOrderQueryParams, Query()],
 ):
     """Get all orders for current user"""
     return await OrderService(session=session).get_user_orders(
         user_id=current_user.id,
-        page=page,
-        limit=limit,
-        order_status=order_status,
-        payment_status=payment_status,
+        page=order_params.page,
+        limit=order_params.limit,
+        order_status=order_params.order_status,
+        payment_status=order_params.payment_status,
     )
 
 
@@ -109,35 +95,15 @@ async def update_order_status(
 async def get_all_orders(
     session: SessionDep,
     _: AdminOnlyDep,
-    page: int = Query(
-        default=1,
-        ge=1,
-        description="Page Number",
-    ),
-    limit: int = Query(
-        default=10,
-        ge=1,
-        le=100,
-        description="Items per page",
-    ),
-    sort_by: str = Query(
-        default="created_at:desc",
-        description="Sort field and order (field:asc | desc)",
-    ),
-    order_status: OrderStatus | None = Query(
-        None, description="Filter by order status"
-    ),
-    payment_status: PaymentStatus | None = Query(
-        None, description="Filter by payment status"
-    ),
+    order_params: Annotated[AdminOrderQueryParams, Query()],
 ):
     """Get all orders (ADMIN route)"""
     return await OrderService(session=session).get_all_orders(
-        page=page,
-        limit=limit,
-        sort_by=sort_by,
-        order_status=order_status,
-        payment_status=payment_status,
+        page=order_params.page,
+        limit=order_params.limit,
+        sort_by=order_params.sort_by,
+        order_status=order_params.order_status,
+        payment_status=order_params.payment_status,
     )
 
 

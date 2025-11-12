@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     BUCKET_NAME: str
     BUCKET_REGION_NAME: str
 
+    # Razorpay Keys
+    RAZORPAY_KEY_ID: str
+    RAZORPAY_KEY_SECRET: str
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

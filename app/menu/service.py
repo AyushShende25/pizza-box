@@ -219,7 +219,7 @@ class ToppingService:
 
     async def get_all(
         self,
-        category: str | None = None,
+        category: ToppingCategory | None = None,
         vegetarian_only: bool | None = None,
         is_available: bool | None = None,
     ):
@@ -230,12 +230,8 @@ class ToppingService:
         if is_available is not None:
             filters.append(Topping.is_available == is_available)
 
-        if category:
-            try:
-                enum_category = ToppingCategory(category)
-                filters.append(Topping.category == enum_category)
-            except ValueError:
-                return []
+        if category is not None:
+            filters.append(Topping.category == category)
 
         if vegetarian_only is not None:
             # vegetarian_only: True -> veg toppings

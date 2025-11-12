@@ -1,5 +1,5 @@
 dev:
-	uv run fastapi dev app/main.py
+	uv run fastapi dev
 
 makemigrations:
 	@echo "Making migrations..."

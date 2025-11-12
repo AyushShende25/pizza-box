@@ -20,3 +20,5 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.42",
     "types-passlib>=1.7.7.20250602",
 ]
+[tool.fastapi]
+entrypoint="app.main:app"

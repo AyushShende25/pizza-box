@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import Field, ConfigDict
 from uuid import UUID
 from datetime import datetime
+from app.core.base_schema import BaseSchema
 
 
-class AddressBase(BaseModel):
+class AddressBase(BaseSchema):
     full_name: str = Field(
         min_length=1,
         max_length=100,
@@ -26,7 +27,7 @@ class AddressCreate(AddressBase):
     pass
 
 
-class AddressUpdate(BaseModel):
+class AddressUpdate(BaseSchema):
     full_name: str | None = Field(
         default=None,
         min_length=1,

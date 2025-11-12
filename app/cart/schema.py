@@ -1,11 +1,12 @@
-from pydantic import BaseModel, Field, ConfigDict, computed_field
+from pydantic import Field, computed_field
 from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
 from app.menu.schema import PizzaResponse, CrustResponse, SizeResponse, ToppingResponse
+from app.core.base_schema import BaseSchema
 
 
-class CartItemBase(BaseModel):
+class CartItemBase(BaseSchema):
     quantity: int = Field(ge=1, le=99)
 
 
@@ -17,8 +18,6 @@ class CartItemCreate(CartItemBase):
 
 
 class CartItemResponse(CartItemBase):
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     total: Decimal
     pizza: PizzaResponse
@@ -33,9 +32,7 @@ class CartItemUpdate(CartItemBase):
     pass
 
 
-class CartResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
+class CartResponse(BaseSchema):
     id: UUID
     subtotal: Decimal
     tax: Decimal
