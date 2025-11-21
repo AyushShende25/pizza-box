@@ -104,6 +104,7 @@ async def get_all_orders(
         sort_by=order_params.sort_by,
         order_status=order_params.order_status,
         payment_status=order_params.payment_status,
+        payment_method=order_params.payment_method,
     )
 
 

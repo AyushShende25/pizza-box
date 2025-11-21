@@ -206,10 +206,15 @@ class OrderService:
         sort_by: str = "created_at:desc",
         order_status: OrderStatus | None = None,
         payment_status: PaymentStatus | None = None,
+        payment_method: PaymentMethod | None = None,
     ):
         skip = (page - 1) * limit
 
-        base_query, count_query = self._build_queries(order_status, payment_status)
+        base_query, count_query = self._build_queries(
+            order_status=order_status,
+            payment_status=payment_status,
+            payment_method=payment_method,
+        )
 
         field, order = self._parse_sort_params(sort_by)
         sort_column = getattr(Order, field, Order.created_at)
@@ -259,6 +264,7 @@ class OrderService:
         self,
         order_status: OrderStatus | None = None,
         payment_status: PaymentStatus | None = None,
+        payment_method: PaymentMethod | None = None,
     ):
         base_query = select(Order)
         count_query = select(func.count()).select_from(Order)
@@ -268,6 +274,9 @@ class OrderService:
 
         if payment_status is not None:
             filters.append(Order.payment_status == payment_status)
+
+        if payment_method is not None:
+            filters.append(Order.payment_method == payment_method)
 
         if filters:
             base_query = base_query.where(and_(*filters))
@@ -282,8 +291,7 @@ class OrderService:
             field, order = parts
             valid_fields = {
                 "created_at",
-                "updated_at",
-                "subtotal",
+                "order_no",
                 "total",
             }
             field = field if field in valid_fields else "created_at"

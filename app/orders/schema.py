@@ -94,6 +94,9 @@ class BaseOrderQueryParams(BaseSchema):
     payment_status: PaymentStatus | None = Field(
         default=None, description="Filter by payment status"
     )
+    payment_method: PaymentMethod | None = Field(
+        default=None, description="Filter by payment method"
+    )
 
 
 class UserOrderQueryParams(BaseOrderQueryParams):
