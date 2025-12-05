@@ -2,10 +2,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from decimal import Decimal
 from sqlalchemy import select, desc, and_, func, asc
 from sqlalchemy.orm import selectinload
-from app.orders.schema import OrderCreate
+from datetime import datetime
 import uuid
 import asyncio
 import math
+import json
+from app.orders.schema import OrderCreate
 from app.orders.utils import generate_order_num, format_address
 from app.menu.service import PizzaService, CrustService, SizeService
 from app.menu.model import Topping
@@ -25,6 +27,16 @@ from app.core.exceptions import (
     ToppingNotFoundError,
     OrderStatusUpdateError,
 )
+from app.notifications.events import publish_order_event
+from app.notifications.schema import OrderEventData
+
+ORDER_STATUS_MESSAGES = {
+    OrderStatus.CONFIRMED: "Restaurant has confirmed your order.",
+    OrderStatus.PREPARING: "Your pizza is being prepared!",
+    OrderStatus.OUT_FOR_DELIVERY: "Your order is on its way!",
+    OrderStatus.DELIVERED: "Your order has been delivered!",
+    OrderStatus.CANCELLED: "Your order has been cancelled.",
+}
 
 
 class OrderService:
@@ -129,6 +141,18 @@ class OrderService:
         self.session.add(order)
         await self.session.commit()
 
+        await publish_order_event(
+            event_type="order_created",
+            data=OrderEventData(
+                order_id=order.id,
+                order_num=order.order_no,
+                user_id=order.user_id,
+                status=order.order_status,
+                payment_status=order.payment_status,
+                total_amount=order.total,
+            ),
+        )
+
         loaded_order = await self.load_order(order.id)
         return loaded_order
 
@@ -197,6 +221,20 @@ class OrderService:
         order.order_status = OrderStatus.CANCELLED
         await self.session.commit()
         await self.session.refresh(order)
+
+        await publish_order_event(
+            event_type="order_cancelled",
+            data=OrderEventData(
+                order_id=order.id,
+                order_num=order.order_no,
+                user_id=order.user_id,
+                status=OrderStatus.CANCELLED,
+                payment_status=order.payment_status,
+                total_amount=order.total,
+                reason="User cancelled before preparation",
+            ),
+        )
+
         return order
 
     async def get_all_orders(
@@ -257,6 +295,23 @@ class OrderService:
 
         order.order_status = order_status
         await self.session.commit()
+
+        status_message = ORDER_STATUS_MESSAGES.get(
+            order_status, f"Order status updated to {order_status.value}"
+        )
+        await publish_order_event(
+            event_type="order_status_changed",
+            data=OrderEventData(
+                order_id=order.id,
+                order_num=order.order_no,
+                user_id=order.user_id,
+                status=order_status,
+                status_message=status_message,
+                payment_status=order.payment_status,
+                total_amount=order.total,
+            ),
+        )
+
         loaded_order = await self.load_order(order.id)
         return loaded_order
 

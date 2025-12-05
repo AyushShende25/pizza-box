@@ -5,6 +5,7 @@ import uuid
 import enum
 from app.core.base import Base
 from app.address.model import Address
+from app.notifications.model import Notification
 
 
 class UserRole(enum.Enum):
@@ -43,6 +44,9 @@ class User(Base):
 
     addresses: Mapped[list["Address"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        "Notification", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

@@ -19,6 +19,7 @@ dependencies = [
     "redis>=6.4.0",
     "sqlalchemy[asyncio]>=2.0.42",
     "types-passlib>=1.7.7.20250602",
+    "websockets>=15.0.1",
 ]
 [tool.fastapi]
 entrypoint="app.main:app"

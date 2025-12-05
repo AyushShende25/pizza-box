@@ -1,8 +1,8 @@
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.utils import get_authorization_scheme_param
-from fastapi import Depends, Request
+from fastapi import Depends, Request, Cookie
 from typing import Annotated
-from app.core.database import SessionDep
+from app.core.database import SessionDep, async_session
 from app.auth.utils import decode_token
 from app.auth.model import User, UserRole
 from app.libs.fastmail import FastMailService
@@ -12,6 +12,7 @@ from app.core.exceptions import (
     AuthenticationError,
     AuthorizationError,
 )
+from fastapi import WebSocket, WebSocketException, status
 
 
 def get_mail_service() -> FastMailService:
@@ -107,3 +108,50 @@ class RoleChecker:
 AdminOnlyDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN]))]
 
 UserOrAdminDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN, UserRole.USER]))]
+
+
+async def get_current_user_ws(
+    websocket: WebSocket,
+    token: Annotated[str | None, Cookie(alias="access_token")] = None,
+):
+    if token is None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    payload = decode_token(token)
+    if not payload:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    return user
+
+
+async def get_current_admin_ws(
+    websocket: WebSocket,
+    token: Annotated[str | None, Cookie(alias="access_token")] = None,
+):
+    if token is None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    payload = decode_token(token)
+    if not payload:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    user_id = payload.get("sub")
+
+    if not user_id:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    async with async_session() as session:
+        user = await session.get(User, user_id)
+        if not user or user.role != UserRole.ADMIN:
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+
+    return user

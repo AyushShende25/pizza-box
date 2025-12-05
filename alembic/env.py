@@ -14,6 +14,7 @@ from app.cart import model as cart_models
 from app.address import model as address_models
 from app.orders import model as order_models
 from app.payments import model as payments_models
+from app.notifications import model as notifications_models
 # Import all models for automatic migrations
 
 database_url = settings.DATABASE_URL

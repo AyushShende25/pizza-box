@@ -11,6 +11,9 @@ from app.core.exceptions import (
 )
 from app.payments.model import Payment, PaymentProvider, PaymentTransactionStatus
 from app.orders.model import OrderStatus, PaymentStatus
+from app.notifications.events import publish_payment_event
+from app.notifications.schema import PaymentEventData
+from app.utils.logger import logger
 
 
 class PaymentService:
@@ -87,11 +90,49 @@ class PaymentService:
             payment.status = PaymentTransactionStatus.FAILED
             payment.error_message = "Invalid payment signature"
             await self.session.commit()
+
+            # This is very unlikely to happen, added just for type-check satisfaction
+            if not payment.user_id:
+                logger.warning(
+                    f"Skipping notification for payment {payment.id} — no user_id"
+                )
+                return payment
+            await publish_payment_event(
+                event_type="payment_failed",
+                data=PaymentEventData(
+                    user_id=payment.user_id,
+                    order_num=payment.order.order_no,
+                    payment_status=payment.status,
+                    provider=payment.provider,
+                    amount=payment.amount,
+                    reason="Invalid payment signature",
+                ),
+            )
+
             return payment
         except Exception as e:
             payment.status = PaymentTransactionStatus.FAILED
             payment.error_message = f"Verification error: {str(e)}"
             await self.session.commit()
+
+            # This is very unlikely to happen, added just type-check satisfaction
+            if not payment.user_id:
+                logger.warning(
+                    f"Skipping notification for payment {payment.id} — no user_id"
+                )
+                return payment
+            await publish_payment_event(
+                event_type="payment_failed",
+                data=PaymentEventData(
+                    user_id=payment.user_id,
+                    order_num=payment.order.order_no,
+                    payment_status=payment.status,
+                    provider=payment.provider,
+                    amount=payment.amount,
+                    reason=str(e),
+                ),
+            )
+
             raise PaymentCreationError(f"Payment verification failed: {str(e)}")
 
         payment.razorpay_payment_id = razorpay_payment_id
@@ -116,5 +157,22 @@ class PaymentService:
 
         await self.session.commit()
         await self.session.refresh(payment)
+
+        # This is very unlikely to happen, added just type-check satisfaction
+        if not payment.user_id:
+            logger.warning(
+                f"Skipping notification for payment {payment.id} — no user_id"
+            )
+            return payment
+        await publish_payment_event(
+            event_type="payment_successful",
+            data=PaymentEventData(
+                user_id=payment.user_id,
+                order_num=payment.order.order_no,
+                amount=payment.amount,
+                payment_status=payment.status,
+                provider=payment.provider,
+            ),
+        )
 
         return payment
