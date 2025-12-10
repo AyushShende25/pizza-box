@@ -1,12 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from decimal import Decimal
-from sqlalchemy import select, desc, and_, func, asc
+from sqlalchemy import select, desc, and_, func, asc, text
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import date, timedelta
 import uuid
 import asyncio
 import math
-import json
 from app.orders.schema import OrderCreate
 from app.orders.utils import generate_order_num, format_address
 from app.menu.service import PizzaService, CrustService, SizeService
@@ -355,3 +354,66 @@ class OrderService:
             return field, order
         except ValueError:
             return "created_at", "desc"
+
+    async def get_order_stats(self, start_date: date, end_date: date):
+        end_date = end_date + timedelta(days=1)
+        total_orders = await self.session.scalar(
+            select(func.count(Order.id)).where(
+                Order.created_at >= start_date, Order.created_at < end_date
+            )
+        )
+
+        total_sales = await self.session.scalar(
+            select(func.coalesce(func.sum(Order.total), 0)).where(
+                Order.created_at >= start_date, Order.created_at < end_date
+            )
+        )
+
+        return {
+            "total_orders": total_orders,
+            "total_sales": total_sales,
+        }
+
+    async def get_orders_by_status(self, start_date: date, end_date: date):
+        end_date = end_date + timedelta(days=1)
+        result = await self.session.execute(
+            select(Order.order_status, func.count(Order.id))
+            .where(Order.created_at >= start_date, Order.created_at < end_date)
+            .group_by(Order.order_status)
+        )
+
+        return {status.value: count for status, count in result.all()}
+
+    async def get_top_selling_pizzas(
+        self, start_date: date, end_date: date, limit: int | None = None
+    ):
+        end_date = end_date + timedelta(days=1)
+        result = await self.session.execute(
+            select(OrderItem.pizza_name, func.sum(OrderItem.quantity))
+            .join(OrderItem.order)
+            .where(Order.created_at >= start_date, Order.created_at < end_date)
+            .group_by(OrderItem.pizza_name)
+            .order_by(func.sum(OrderItem.quantity).desc())
+            .limit(limit)
+        )
+
+        return [{"name": name, "sold": sold} for name, sold in result.all()]
+
+    async def get_monthly_sales(self, months_count: int = 6):
+        month_trunc = func.date_trunc("month", Order.created_at)
+        stmt = (
+            select(
+                func.to_char(month_trunc, "YYYY-MM").label("month"),
+                func.count(Order.id).label("total_orders"),
+                func.sum(Order.total).label("revenue"),
+            )
+            .where(
+                Order.created_at
+                >= func.date_trunc("month", func.now())
+                - text(f"INTERVAL '{months_count - 1} months'")
+            )
+            .group_by(month_trunc)
+            .order_by(month_trunc)
+        )
+        result = await self.session.execute(stmt)
+        return result.mappings().all()

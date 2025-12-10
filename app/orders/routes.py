@@ -1,4 +1,6 @@
 from fastapi import APIRouter, status, Query
+from uuid import UUID
+from typing import Annotated
 from app.auth.dependencies import AdminOnlyDep, UserOrAdminDep
 from app.core.database import SessionDep
 from app.orders.schema import (
@@ -8,10 +10,10 @@ from app.orders.schema import (
     PaginatedOrderResponse,
     UserOrderQueryParams,
     AdminOrderQueryParams,
+    OrderStatsQueryParams,
+    OrderMonthlySalesQueryParams,
 )
 from app.orders.service import OrderService
-from uuid import UUID
-from typing import Annotated
 
 orders_router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -118,3 +120,41 @@ async def get_order_detail(
     return await OrderService(session=session).get_order(
         order_id=order_id,
     )
+
+
+@orders_router.get("/stats/summary")
+async def get_order_statistics(
+    session: SessionDep,
+    _: AdminOnlyDep,
+    data: Annotated[OrderStatsQueryParams, Query()],
+):
+    """
+    Get order statistics (admin only)
+    - Total orders, sales
+    - Orders by status
+    - Popular pizzas.
+    """
+    order_service = OrderService(session)
+
+    totals = await order_service.get_order_stats(data.start_date, data.end_date)
+    status_breakdown = await order_service.get_orders_by_status(
+        data.start_date, data.end_date
+    )
+    top_pizzas = await order_service.get_top_selling_pizzas(
+        data.start_date, data.end_date, data.limit
+    )
+
+    return {
+        **totals,
+        "orders_by_status": status_breakdown,
+        "top_pizzas": top_pizzas,
+    }
+
+
+@orders_router.get("/stats/monthly-sales")
+async def get_monthly_sales(
+    session: SessionDep,
+    _: AdminOnlyDep,
+    data: Annotated[OrderMonthlySalesQueryParams, Query()],
+):
+    return await OrderService(session).get_monthly_sales(data.months_count)

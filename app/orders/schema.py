@@ -1,6 +1,6 @@
 from pydantic import Field, computed_field
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from app.orders.model import OrderStatus, PaymentStatus, PaymentMethod
 from app.core.base_schema import BaseSchema
@@ -108,3 +108,13 @@ class AdminOrderQueryParams(BaseOrderQueryParams):
         default="created_at:desc",
         description="Sort field and order (field:asc | desc) (e.g., 'created_at:asc' or 'created_at:desc')",
     )
+
+
+class OrderStatsQueryParams(BaseSchema):
+    start_date: date
+    end_date: date
+    limit: int | None = None
+
+
+class OrderMonthlySalesQueryParams(BaseSchema):
+    months_count: int
