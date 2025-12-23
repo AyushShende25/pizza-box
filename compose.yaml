@@ -1,0 +1,73 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pizza-box-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - postgresql
+      - redis
+    restart: unless-stopped
+    networks:
+      - pizza-box-network
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pizza-box-celery-worker
+    command: /app/.venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - postgresql
+    restart: unless-stopped
+    networks:
+      - pizza-box-network
+
+  postgresql:
+    image: postgres:17
+    container_name: pizza-box-postgres
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - pizza-box-network
+
+  redis:
+      image: redis/redis-stack:7.4.0-v8
+      container_name: pizza-box-redis
+      volumes:
+        - redis_data:/data
+      ports:
+        - "6379:6379"
+        - "8001:8001"
+      restart: unless-stopped
+      networks:
+        - pizza-box-network
+
+  adminer:
+    image: adminer
+    container_name: pizza-box-adminer
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    networks:
+      - pizza-box-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  pizza-box-network:
+    driver: bridge

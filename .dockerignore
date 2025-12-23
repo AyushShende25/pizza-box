@@ -1,0 +1,26 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.pytest_cache
+
+# Env & secrets
+.env
+.env.*
+
+# Logs
+logs
+*.log
+
+# Virtualenv
+.venv
+
+# Git
+.git
+.gitignore
+
+# OS junk
+.DS_Store
+
+Makefile

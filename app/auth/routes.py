@@ -63,7 +63,7 @@ async def login(user_credentials: UserLogin, session: SessionDep, redis: RedisDe
         "access_token",
         value=access_token,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
+        secure=settings.APP_ENV == "production",
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -71,7 +71,7 @@ async def login(user_credentials: UserLogin, session: SessionDep, redis: RedisDe
         "refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
+        secure=settings.APP_ENV == "production",
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
@@ -130,7 +130,7 @@ async def refresh_tokens(
         "access_token",
         value=access_token,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
+        secure=settings.APP_ENV == "production",
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -138,7 +138,7 @@ async def refresh_tokens(
         "refresh_token",
         value=new_refresh_token,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
+        secure=settings.APP_ENV == "production",
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )

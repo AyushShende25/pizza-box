@@ -23,7 +23,7 @@ def set_cart_cookie(response: Response, cart_id: UUID):
         value=str(cart_id),
         max_age=CART_COOKIE_MAX_AGE,
         httponly=True,
-        secure=settings.ENVIRONMENT == "production",
+        secure=settings.APP_ENV == "production",
         samesite="lax",
     )
 

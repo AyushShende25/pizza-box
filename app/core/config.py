@@ -6,9 +6,10 @@ class Settings(BaseSettings):
     """Application config"""
 
     DATABASE_URL: str
-    REDIS_URL: str = "redis://localhost:6379/0"
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    REDIS_URL: str
+    CELERY_BROKER_URL: str
+    CELERY_RESULT_BACKEND: str
+
     BASE_URL: str = "http://localhost:8000"
     CLIENT_URL: str = "http://localhost:5173"
     ADMIN_URL: str = "http://localhost:3000"
@@ -17,7 +18,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "pizza-box api"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
-    ENVIRONMENT: str = "development"
+    APP_ENV: str
 
     # Mail Settings
     MAIL_TOKEN_EXPIRE_SECONDS: int = 900
@@ -50,7 +51,10 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str
     RAZORPAY_KEY_SECRET: str
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env.local",
+        extra="ignore",
+    )
 
 
 settings = Settings()  # type: ignore
