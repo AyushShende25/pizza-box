@@ -1,0 +1,58 @@
+services:
+  nginx:
+    image: nginx:stable-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./client/dist:/var/www/client:ro
+      - ./admin/dist:/var/www/admin:ro
+    networks:
+      - pizza-box-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  api:
+    image: ghcr.io/AyushShende25/pizza-box-api:${IMAGE_TAG:-latest}
+    env_file:
+      - .env
+    networks:
+      - pizza-box-network
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  celery-worker:
+    image: ghcr.io/AyushShende25/pizza-box-api:${IMAGE_TAG:-latest}
+    command: /app/.venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    networks:
+      - pizza-box-network
+
+  postgresql:
+    image: postgres:17
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - pizza-box-network
+
+  redis:
+    image: redis/redis-stack:7.4.0-v8
+    volumes:
+      - redis_data:/data
+    networks:
+      - pizza-box-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  pizza-box-network:
