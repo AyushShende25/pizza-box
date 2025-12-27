@@ -16,7 +16,7 @@ services:
         condition: on-failure
 
   api:
-    image: ghcr.io/AyushShende25/pizza-box-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/ayushshende25/pizza-box-api:${IMAGE_TAG:-latest}
     env_file:
       - .env
     networks:
@@ -27,7 +27,7 @@ services:
         condition: on-failure
 
   celery-worker:
-    image: ghcr.io/AyushShende25/pizza-box-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/ayushshende25/pizza-box-api:${IMAGE_TAG:-latest}
     command: /app/.venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=info
     env_file:
       - .env

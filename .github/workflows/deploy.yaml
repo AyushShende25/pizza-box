@@ -45,9 +45,8 @@ jobs:
           script: |
             cd /opt/pizza-box
 
-            echo "IMAGE_TAG=${{ github.sha }}" > .env.deploy 
+            export IMAGE_TAG=${{ github.sha }}
 
             docker stack deploy \
-              --env-file .env.deploy \
               -c docker-stack.yaml \
               pizza-box
