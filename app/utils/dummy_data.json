@@ -52,21 +52,21 @@
   "menu": {
     "sizes": [
       {
-        "name": "small",
-        "display_name": "Small (10\")",
-        "multiplier": 0.8,
+        "name": "regular",
+        "display_name": "Regular (10\")",
+        "multiplier": 1,
         "sort_order": 1
       },
       {
         "name": "medium",
         "display_name": "Medium (12\")",
-        "multiplier": 1.0,
+        "multiplier": 1.25,
         "sort_order": 2
       },
       {
         "name": "large",
         "display_name": "Large (14\")",
-        "multiplier": 1.35,
+        "multiplier": 1.45,
         "sort_order": 3
       }
     ],
