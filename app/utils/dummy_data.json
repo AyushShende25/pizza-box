@@ -1,0 +1,251 @@
+{
+  "users": [
+    {
+      "email": "admin@pizzabox.dev",
+      "password": "Dev@12345",
+      "first_name": "Admin",
+      "last_name": "PizzaBox",
+      "is_verified": true,
+      "role": "ADMIN"
+    },
+    {
+      "email": "john.doe@gmail.com",
+      "password": "Dev@12345",
+      "first_name": "John",
+      "last_name": "Doe",
+      "is_verified": true,
+      "role": "USER"
+    },
+    {
+      "email": "priya.sharma@gmail.com",
+      "password": "Dev@12345",
+      "first_name": "Priya",
+      "last_name": "Sharma",
+      "is_verified": true,
+      "role": "USER"
+    },
+    {
+      "email": "rohit.verma@gmail.com",
+      "password": "Dev@12345",
+      "first_name": "Rohit",
+      "last_name": "Verma",
+      "is_verified": false,
+      "role": "USER"
+    },
+    {
+      "email": "sneha.patel@gmail.com",
+      "password": "Dev@12345",
+      "first_name": "Sneha",
+      "last_name": "Patel",
+      "is_verified": true,
+      "role": "USER"
+    },
+    {
+      "email": "arjun.mehta@gmail.com",
+      "password": "Dev@12345",
+      "first_name": "Arjun",
+      "last_name": "Mehta",
+      "is_verified": true,
+      "role": "USER"
+    }
+  ],
+  "menu": {
+    "sizes": [
+      {
+        "name": "small",
+        "display_name": "Small (10\")",
+        "multiplier": 0.8,
+        "sort_order": 1
+      },
+      {
+        "name": "medium",
+        "display_name": "Medium (12\")",
+        "multiplier": 1.0,
+        "sort_order": 2
+      },
+      {
+        "name": "large",
+        "display_name": "Large (14\")",
+        "multiplier": 1.35,
+        "sort_order": 3
+      }
+    ],
+    "crusts": [
+      {
+        "name": "Thin Crust",
+        "description": "Crispy thin crust",
+        "additional_price": 0,
+        "sort_order": 1
+      },
+      {
+        "name": "Cheese Burst",
+        "description": "Cheese filled crust",
+        "additional_price": 99,
+        "sort_order": 2
+      }
+    ],
+    "toppings": [
+      {
+        "name": "Mozzarella",
+        "price": 49,
+        "category": "CHEESE",
+        "is_vegetarian": true
+      },
+      {
+        "name": "Pepperoni",
+        "price": 89,
+        "category": "MEAT",
+        "is_vegetarian": false
+      },
+      {
+        "name": "Onions",
+        "price": 29,
+        "category": "VEGETABLE",
+        "is_vegetarian": true
+      },
+      {
+        "name": "Bell Peppers",
+        "price": 39,
+        "category": "VEGETABLE",
+        "is_vegetarian": true
+      },
+      {
+        "name": "Mushrooms",
+        "price": 39,
+        "category": "VEGETABLE",
+        "is_vegetarian": true
+      },
+      {
+        "name": "Olives",
+        "price": 49,
+        "category": "VEGETABLE",
+        "is_vegetarian": true
+      },
+      {
+        "name": "Chicken Sausage",
+        "price": 99,
+        "category": "MEAT",
+        "is_vegetarian": false
+      },
+      {
+        "name": "Tomato Sauce",
+        "price": 0,
+        "category": "SAUCE",
+        "is_vegetarian": true
+      }
+    ],
+    "pizzas": [
+      {
+        "name": "Margherita",
+        "description": "Classic cheese and tomato pizza",
+        "base_price": 199,
+        "category": "VEG",
+        "featured": true,
+        "default_toppings": [
+          "Mozzarella",
+          "Tomato Sauce"
+        ]
+      },
+      {
+        "name": "Farmhouse",
+        "description": "Loaded with onions, capsicum and mushrooms",
+        "base_price": 299,
+        "category": "VEG",
+        "default_toppings": [
+          "Mozzarella",
+          "Onions",
+          "Bell Peppers",
+          "Mushrooms"
+        ]
+      },
+      {
+        "name": "Veg Supreme",
+        "description": "A delight loaded with crunchy veggies",
+        "base_price": 329,
+        "category": "VEG",
+        "default_toppings": [
+          "Mozzarella",
+          "Onions",
+          "Bell Peppers",
+          "Olives"
+        ]
+      },
+      {
+        "name": "Cheese Overload",
+        "description": "Extra cheese for true cheese lovers",
+        "base_price": 279,
+        "category": "VEG",
+        "default_toppings": [
+          "Mozzarella"
+        ]
+      },
+      {
+        "name": "Pepperoni Classic",
+        "description": "Pepperoni with mozzarella",
+        "base_price": 399,
+        "category": "NON_VEG",
+        "featured": true,
+        "default_toppings": [
+          "Mozzarella",
+          "Pepperoni"
+        ]
+      },
+      {
+        "name": "Chicken Supreme",
+        "description": "Chicken sausage with veggies",
+        "base_price": 429,
+        "category": "NON_VEG",
+        "default_toppings": [
+          "Mozzarella",
+          "Chicken Sausage",
+          "Onions"
+        ]
+      },
+      {
+        "name": "Meat Lovers",
+        "description": "Loaded with chicken and pepperoni",
+        "base_price": 499,
+        "category": "NON_VEG",
+        "default_toppings": [
+          "Mozzarella",
+          "Pepperoni",
+          "Chicken Sausage"
+        ]
+      },
+      {
+        "name": "Classic Veg",
+        "description": "Simple and satisfying veggie pizza",
+        "base_price": 249,
+        "category": "VEG",
+        "default_toppings": [
+          "Mozzarella",
+          "Onions"
+        ]
+      },
+      {
+        "name": "Spicy Veggie",
+        "description": "Veggies with a spicy kick",
+        "base_price": 289,
+        "category": "VEG",
+        "default_toppings": [
+          "Mozzarella",
+          "Bell Peppers",
+          "Onions"
+        ]
+      },
+      {
+        "name": "Ultimate Combo",
+        "description": "Perfect mix of veg and non-veg toppings",
+        "base_price": 549,
+        "category": "NON_VEG",
+        "featured": true,
+        "default_toppings": [
+          "Mozzarella",
+          "Pepperoni",
+          "Onions",
+          "Bell Peppers"
+        ]
+      }
+    ]
+  }
+}
