@@ -35,6 +35,20 @@ jobs:
     needs: docker-build-push
 
     steps:
+      - name: checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 #v6.0.1
+
+      - name: Copy configuration files to VPS
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 #v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_KEY }}
+          port: ${{ secrets.PORT }}
+          source: "docker-stack.yaml,nginx/nginx.conf"
+          target: "/opt/pizza-box/"
+          strip_components: 0
+
       - name: Deploy on VPS
         uses: appleboy/ssh-action@823bd89e131d8d508129f9443cad5855e9ba96f0 #v1.2.4
         with:
