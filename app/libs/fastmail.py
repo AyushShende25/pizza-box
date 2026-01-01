@@ -1,7 +1,7 @@
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from fastapi import HTTPException, status
 from pydantic import EmailStr
 from app.core.config import settings
+from app.utils.logger import logger
 
 
 class FastMailService:
@@ -32,7 +32,5 @@ class FastMailService:
                 )
             )
         except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Failed to send email: {str(e)}",
-            )
+            logger.exception("Email sending failed")
+            raise RuntimeError(f"Email sending failed: {e}")

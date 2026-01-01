@@ -49,15 +49,11 @@ async def create_upload_url(body: UploadRequest):
                 "Bucket": settings.BUCKET_NAME,
                 "Key": key,
                 "ContentType": body.content_type,
-                "ACL": "public-read",
             },
             ExpiresIn=5 * 60,
         )
 
-        file_url = (
-            f"https://{settings.BUCKET_NAME}."
-            f"{settings.BUCKET_REGION_NAME}.cdn.digitaloceanspaces.com/{key}"
-        )
+        file_url = f"{settings.BUCKET_CUSTOM_DOMAIN}/{key}"
 
         return {"uploadUrl": signed_url, "fileUrl": file_url}
     except Exception as e:

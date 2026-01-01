@@ -42,7 +42,6 @@ class Settings(BaseSettings):
     # Bucket storage settings
     BUCKET_ACCESS_KEY_ID: str
     BUCKET_SECRET_ACCESS_KEY: str
-    BUCKET_ENDPOINT_URL: str
     BUCKET_CUSTOM_DOMAIN: str
     BUCKET_NAME: str
     BUCKET_REGION_NAME: str
