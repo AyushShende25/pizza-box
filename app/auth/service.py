@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import timedelta
 from app.auth.schema import UserCreate, UserLogin
-from app.auth.model import User
+from app.auth.model import User, UserRole
 from app.auth.utils import (
     get_password_hash,
     generate_urlsafe_token,
@@ -156,14 +156,18 @@ class AuthService:
     async def resend_verification_token(self, email: str):
         user = await self.get_user_by_email(email)
         if not user:
-            raise UserNotFoundError()
+            return {
+                "message": "If this email is registered and not verified, a verification email has been sent."
+            }
 
         if user.is_verified:
             raise AlreadyVerifiedError()
 
         await self._send_verification_email(user)
 
-        return {"message": "Verification email resent successfully"}
+        return {
+            "message": "If this email is registered and not verified, a verification email has been sent."
+        }
 
     async def _send_verification_email(self, user: User):
         verification_token = generate_urlsafe_token()
@@ -194,7 +198,10 @@ class AuthService:
             token=reset_token, user_id=str(user.id), token_type="reset"
         )
 
-        link = f"{settings.CLIENT_URL}/reset-password?token={reset_token}"
+        if user.role == UserRole.ADMIN:
+            link = f"{settings.ADMIN_URL}/reset-password?token={reset_token}"
+        else:
+            link = f"{settings.CLIENT_URL}/reset-password?token={reset_token}"
 
         send_mail_task.delay(
             recipients=[user.email],
@@ -211,11 +218,11 @@ class AuthService:
         if not user_id:
             raise InvalidTokenError()
 
-        await self.redis.delete_token(token, token_type="reset")
-
         user = await self.get_user_by_id(user_id)
         if not user:
             raise UserNotFoundError()
+
+        await self.redis.delete_token(token, token_type="reset")
 
         password_hash = get_password_hash(password)
         user.password_hash = password_hash
