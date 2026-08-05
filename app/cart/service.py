@@ -1,20 +1,17 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.cart.schema import CartItemCreate, CartItemUpdate
-from app.cart.model import Cart, CartItem
-from app.menu.service import PizzaService, SizeService, CrustService
-from sqlalchemy import select, delete, func
-from sqlalchemy.orm import selectinload
-from app.menu.model import Topping
-from uuid import UUID
-from app.core.exceptions import (
-    CartNotFoundError,
-    ToppingNotFoundError,
-    CartItemNotFoundError,
-)
-from app.cart.constants import TAX_RATE, DELIVERY_CHARGE
-from app.menu.model import Pizza
-from decimal import Decimal
 import asyncio
+from decimal import Decimal
+from uuid import UUID
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.cart.constants import DELIVERY_CHARGE, TAX_RATE
+from app.cart.model import Cart, CartItem
+from app.cart.schema import CartItemCreate, CartItemUpdate
+from app.core.exceptions import EntityNotFoundError
+from app.menu.model import Pizza, Topping
+from app.menu.service import CrustService, PizzaService, SizeService
 
 CART_ITEM_OPTIONS = (
     selectinload(CartItem.pizza).selectinload(Pizza.default_toppings),
@@ -145,7 +142,10 @@ class CartService:
         """Add item to cart"""
         cart = await self._load_cart(cart_id)
         if not cart:
-            raise CartNotFoundError()
+            raise EntityNotFoundError(
+                error_code="CART_NOT_FOUND",
+                message="Cart does not exist",
+            )
 
         pizza, size, crust = await asyncio.gather(
             PizzaService(self.session).get_one(item_data.pizza_id),
@@ -170,7 +170,7 @@ class CartService:
             size=size,
             crust=crust,
             quantity=item_data.quantity,
-            total=Decimal("0"),
+            total=Decimal(0),
         )
 
         # Add toppings if specified
@@ -181,7 +181,10 @@ class CartService:
                 )
             )
             if len(toppings) != len(item_data.topping_ids):
-                raise ToppingNotFoundError(message="One or more toppings not found")
+                raise EntityNotFoundError(
+                    error_code="TOPPING_NOT_FOUND",
+                    message="One or more topping not found",
+                )
             cart_item.toppings = toppings
 
         cart_item.total = self._calculate_item_total(cart_item)
@@ -221,7 +224,10 @@ class CartService:
             )
         )
         if not cart_item:
-            raise CartItemNotFoundError()
+            raise EntityNotFoundError(
+                error_code="CART_ITEM_NOT_FOUND",
+                message="Cart item does not exist",
+            )
 
         cart_item.quantity = update_data.quantity
         cart_item.total = self._calculate_item_total(cart_item)
@@ -242,7 +248,10 @@ class CartService:
             )
         )
         if not cart_item:
-            raise CartItemNotFoundError()
+            raise EntityNotFoundError(
+                error_code="CART_ITEM_NOT_FOUND",
+                message="Cart item does not exist",
+            )
 
         await self.session.delete(cart_item)
         await self._recalculate_cart_totals(cart_item.cart)
@@ -253,14 +262,17 @@ class CartService:
         """Clear all items from cart"""
         cart = await self.session.get(Cart, cart_id)
         if not cart:
-            raise CartNotFoundError()
+            raise EntityNotFoundError(
+                error_code="CART_NOT_FOUND",
+                message="Cart does not exist",
+            )
 
         await self.session.execute(delete(CartItem).where(CartItem.cart_id == cart_id))
 
-        cart.subtotal = Decimal("0")
-        cart.tax = Decimal("0")
-        cart.delivery_charge = Decimal("0")
-        cart.total = Decimal("0")
+        cart.subtotal = Decimal(0)
+        cart.tax = Decimal(0)
+        cart.delivery_charge = Decimal(0)
+        cart.total = Decimal(0)
 
         await self.session.commit()
         return await self._load_cart(cart_id)
@@ -277,11 +289,11 @@ class CartService:
         result = await self.session.execute(
             select(func.sum(CartItem.total)).where(CartItem.cart_id == cart.id)
         )
-        subtotal = result.scalar() or Decimal("0")
+        subtotal = result.scalar() or Decimal(0)
         cart.subtotal = Decimal(subtotal)
         cart.tax = subtotal * Decimal(TAX_RATE)
         cart.delivery_charge = (
-            Decimal(DELIVERY_CHARGE) if subtotal > Decimal("0") else Decimal("0")
+            Decimal(DELIVERY_CHARGE) if subtotal > Decimal(0) else Decimal(0)
         )
         cart.total = subtotal + cart.tax + cart.delivery_charge
         return cart

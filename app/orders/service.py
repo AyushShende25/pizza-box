@@ -1,33 +1,30 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from decimal import Decimal
-from sqlalchemy import select, desc, and_, func, asc, text
-from sqlalchemy.orm import selectinload
-from datetime import date, timedelta
-import uuid
 import asyncio
 import math
-from app.orders.schema import OrderCreate
-from app.orders.utils import generate_order_num, format_address
-from app.menu.service import PizzaService, CrustService, SizeService
+import uuid
+from datetime import date, timedelta
+from decimal import Decimal
+
+from sqlalchemy import and_, asc, desc, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.address.service import AddressesService
+from app.core.exceptions import BadRequestError, EntityNotFoundError
 from app.menu.model import Topping
-from app.orders.constants import TAX_RATE, DELIVERY_CHARGE
+from app.menu.service import CrustService, PizzaService, SizeService
+from app.notifications.events import publish_order_event
+from app.notifications.schema import OrderEventData
+from app.orders.constants import DELIVERY_CHARGE, TAX_RATE
 from app.orders.model import (
     Order,
     OrderItem,
     OrderItemTopping,
     OrderStatus,
-    PaymentStatus,
     PaymentMethod,
+    PaymentStatus,
 )
-from app.address.service import AddressesService
-from app.core.exceptions import (
-    OrderNotFoundError,
-    OrderCancelFailure,
-    ToppingNotFoundError,
-    OrderStatusUpdateError,
-)
-from app.notifications.events import publish_order_event
-from app.notifications.schema import OrderEventData
+from app.orders.schema import OrderCreate
+from app.orders.utils import format_address, generate_order_num
 
 ORDER_STATUS_MESSAGES = {
     OrderStatus.CONFIRMED: "Restaurant has confirmed your order.",
@@ -98,7 +95,10 @@ class OrderService:
                 if len(toppings) != len(order_item_data.toppings_ids):
                     found_ids = {t.id for t in toppings}
                     missing_ids = set(order_item_data.toppings_ids) - found_ids
-                    raise ToppingNotFoundError(f"Toppings not found: {missing_ids}")
+                    raise EntityNotFoundError(
+                        error_code="TOPPING_NOT_FOUND",
+                        message=f"Toppings not found: {missing_ids}",
+                    )
 
                 toppings_total = sum((t.price for t in toppings), Decimal("0.00"))
             base_pizza_price = pizza.base_price
@@ -166,7 +166,8 @@ class OrderService:
         skip = (page - 1) * limit
         base_query, _ = self._build_queries(order_status, payment_status)
         stmt = (
-            base_query.options(
+            base_query
+            .options(
                 selectinload(Order.order_items).selectinload(OrderItem.toppings),
             )
             .where(Order.user_id == user_id)
@@ -190,7 +191,10 @@ class OrderService:
             )
         )
         if not order:
-            raise OrderNotFoundError()
+            raise EntityNotFoundError(
+                error_code="ORDER_NOT_FOUND",
+                message="Order with that id does not exist",
+            )
         return order
 
     async def get_order(
@@ -205,17 +209,24 @@ class OrderService:
             )
         )
         if not order:
-            raise OrderNotFoundError()
+            raise EntityNotFoundError(
+                error_code="ORDER_NOT_FOUND",
+                message="Order with that id does not exist",
+            )
         return order
 
     async def cancel_user_order(self, user_id: uuid.UUID, order_id: uuid.UUID):
         order = await self.get_user_order(user_id, order_id)
         if order.order_status not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
-            raise OrderCancelFailure(message="Cannot cancel order in current status")
+            raise BadRequestError(
+                error_code="ORDER_CANCEL_FAILURE",
+                message="Cannot cancel order in current status",
+            )
 
         if order.payment_status == PaymentStatus.PAID:
-            raise OrderCancelFailure(
-                message="Cannot cancel paid order. Please request refund."
+            raise BadRequestError(
+                error_code="ORDER_CANCEL_FAILURE",
+                message="Cannot cancel paid order. Please request refund",
             )
         order.order_status = OrderStatus.CANCELLED
         await self.session.commit()
@@ -258,7 +269,8 @@ class OrderService:
         sort_order = asc(sort_column) if order.lower() == "asc" else desc(sort_column)
 
         result = await self.session.scalars(
-            base_query.options(
+            base_query
+            .options(
                 selectinload(Order.order_items).selectinload(OrderItem.toppings),
             )
             .order_by(sort_order)
@@ -279,7 +291,10 @@ class OrderService:
     async def update_order_status(self, order_id: uuid.UUID, order_status: OrderStatus):
         order = await self.session.scalar(select(Order).where(Order.id == order_id))
         if not order:
-            raise OrderNotFoundError()
+            raise EntityNotFoundError(
+                error_code="ORDER_NOT_FOUND",
+                message="Order with that id does not exist",
+            )
 
         valid_transitions = {
             OrderStatus.PENDING: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
@@ -288,8 +303,9 @@ class OrderService:
             OrderStatus.OUT_FOR_DELIVERY: [OrderStatus.DELIVERED],
         }
         if order_status not in valid_transitions.get(order.order_status, []):
-            raise OrderStatusUpdateError(
-                f"Cannot transition from {order.order_status.value} to {order_status.value}"
+            raise BadRequestError(
+                error_code="ORDER_STATUS_UPDATE_ERROR",
+                message=f"Cannot transition from {order.order_status.value} to {order_status.value}",
             )
 
         order.order_status = order_status

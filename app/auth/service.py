@@ -1,33 +1,32 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from datetime import timedelta
-from app.auth.schema import UserCreate, UserLogin
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.auth.model import User, UserRole
+from app.auth.schema import UserCreate, UserLogin
 from app.auth.utils import (
-    get_password_hash,
-    generate_urlsafe_token,
-    verify_password,
     create_token,
     decode_token,
+    generate_urlsafe_token,
+    get_password_hash,
+    verify_password,
 )
 from app.core.config import settings
+from app.core.exceptions import (
+    AuthenticationError,
+    BadRequestError,
+    ConflictError,
+    EntityNotFoundError,
+)
 from app.core.redis import RedisService
 from app.utils.templates.email_templates import (
-    verification_email_html,
-    welcome_email_html,
     forgot_password_email_html,
     password_reset_confirmation_email_html,
+    verification_email_html,
+    welcome_email_html,
 )
 from app.workers.email_tasks import send_mail_task
-from app.core.exceptions import (
-    UserAlreadyExistsError,
-    InvalidCredentialsError,
-    InvalidRefreshTokenError,
-    InvalidTokenError,
-    UnverifiedAccountError,
-    UserNotFoundError,
-    AlreadyVerifiedError,
-)
 
 
 class AuthService:
@@ -53,7 +52,10 @@ class AuthService:
     async def create_user(self, user_credentials: UserCreate) -> User:
         existing_user = await self.get_user_by_email(user_credentials.email)
         if existing_user:
-            raise UserAlreadyExistsError()
+            raise ConflictError(
+                error_code="USER_ALREADY_EXISTS",
+                message="User with that email already exists",
+            )
 
         password_hash = get_password_hash(user_credentials.password)
 
@@ -74,11 +76,17 @@ class AuthService:
     async def verify(self, token: str):
         user_id = await self.redis.verify_token(token=token, token_type="verification")
         if not user_id:
-            raise InvalidTokenError()
+            raise AuthenticationError(
+                error_code="INVALID_TOKEN",
+                message="Invalid or expired token",
+            )
 
         user = await self.get_user_by_id(user_id)
         if not user:
-            raise UserNotFoundError()
+            raise EntityNotFoundError(
+                message="User not found",
+                error_code="USER_NOT_FOUND",
+            )
 
         user.is_verified = True
         await self.session.commit()
@@ -97,9 +105,15 @@ class AuthService:
         user = await self.get_user_by_email(credentials.email)
 
         if not user or not verify_password(credentials.password, user.password_hash):
-            raise InvalidCredentialsError()
+            raise AuthenticationError(
+                error_code="INVALID_CREDENTIALS",
+                message="Incorrect email or password",
+            )
         if not user.is_verified:
-            raise UnverifiedAccountError()
+            raise AuthenticationError(
+                error_code="ACCOUNT_NOT_VERIFIED",
+                message="Please verify your account first",
+            )
         return user
 
     async def generate_tokens(self, user: User) -> tuple[str, str]:
@@ -125,20 +139,32 @@ class AuthService:
     async def refresh_tokens(self, refresh_token: str) -> tuple[str, str]:
         payload = decode_token(refresh_token)
         if not payload or not payload.get("refresh"):
-            raise InvalidRefreshTokenError()
+            raise AuthenticationError(
+                message="Invalid refresh token",
+                error_code="INVALID_REFRESH_TOKEN",
+            )
 
         user_id = payload.get("sub")
         refresh_jti = payload.get("jti")
         if not user_id or not refresh_jti:
-            raise InvalidRefreshTokenError()
+            raise AuthenticationError(
+                message="Invalid refresh token",
+                error_code="INVALID_REFRESH_TOKEN",
+            )
 
         token_valid = await self.redis.validate_refresh_jti(refresh_jti, user_id)
         if not token_valid:
-            raise InvalidRefreshTokenError()
+            raise AuthenticationError(
+                message="Invalid refresh token",
+                error_code="INVALID_REFRESH_TOKEN",
+            )
 
         user = await self.session.get(User, user_id)
         if not user:
-            raise UserNotFoundError()
+            raise EntityNotFoundError(
+                message="User not found",
+                error_code="USER_NOT_FOUND",
+            )
 
         # Delete the old refresh-token-id from redis
         await self.redis.revoke_refresh_jti(refresh_jti)
@@ -161,7 +187,10 @@ class AuthService:
             }
 
         if user.is_verified:
-            raise AlreadyVerifiedError()
+            raise BadRequestError(
+                error_code="ALREADY_VERIFIED",
+                message="User is already verified",
+            )
 
         await self._send_verification_email(user)
 
@@ -216,11 +245,17 @@ class AuthService:
     async def reset_pwd(self, token: str, password: str):
         user_id = await self.redis.verify_token(token=token, token_type="reset")
         if not user_id:
-            raise InvalidTokenError()
+            raise AuthenticationError(
+                error_code="INVALID_TOKEN",
+                message="Invalid or expired token",
+            )
 
         user = await self.get_user_by_id(user_id)
         if not user:
-            raise UserNotFoundError()
+            raise EntityNotFoundError(
+                message="User not found",
+                error_code="USER_NOT_FOUND",
+            )
 
         await self.redis.delete_token(token, token_type="reset")
 

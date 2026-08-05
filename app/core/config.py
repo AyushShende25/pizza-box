@@ -1,5 +1,5 @@
-from pydantic_settings import SettingsConfigDict, BaseSettings
 from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -15,10 +15,11 @@ class Settings(BaseSettings):
     ADMIN_URL: str = "http://localhost:3000"
 
     # App Settings
-    PROJECT_NAME: str = "pizza-box api"
+    PROJECT_NAME: str = "pizza-box-api"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     APP_ENV: str
+    LOG_LEVEL: str
 
     # Mail Settings
     MAIL_TOKEN_EXPIRE_SECONDS: int = 900

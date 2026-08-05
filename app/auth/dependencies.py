@@ -1,18 +1,18 @@
+from typing import Annotated
+
+from fastapi import Cookie, Depends, Request, WebSocket, WebSocketException, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.utils import get_authorization_scheme_param
-from fastapi import Depends, Request, Cookie
-from typing import Annotated
-from app.core.database import SessionDep, async_session
-from app.auth.utils import decode_token
+
 from app.auth.model import User, UserRole
-from app.libs.fastmail import FastMailService
+from app.auth.utils import decode_token
+from app.core.database import AsyncSessionLocal, SessionDep
 from app.core.exceptions import (
-    UserNotFoundError,
-    InvalidTokenError,
     AuthenticationError,
     AuthorizationError,
+    EntityNotFoundError,
 )
-from fastapi import WebSocket, WebSocketException, status
+from app.libs.fastmail import FastMailService
 
 
 def get_mail_service() -> FastMailService:
@@ -52,11 +52,11 @@ async def get_current_user(
 ):
     payload = decode_token(token)
     if not payload:
-        raise InvalidTokenError()
+        raise AuthenticationError()
 
     user_id = payload.get("sub")
     if user_id is None:
-        raise InvalidTokenError(
+        raise AuthenticationError(
             message="Token missing user identifier",
             error_code="INVALID_TOKEN_STRUCTURE",
         )
@@ -69,7 +69,10 @@ async def get_current_user(
 
     user = await session.get(User, user_id)
     if not user:
-        raise UserNotFoundError()
+        raise EntityNotFoundError(
+            message="User not found",
+            error_code="USER_NOT_FOUND",
+        )
     return user
 
 
@@ -125,7 +128,7 @@ async def get_current_user_ws(
     if user_id is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    async with async_session() as session:
+    async with AsyncSessionLocal() as session:
         user = await session.get(User, user_id)
         if not user:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
@@ -149,7 +152,7 @@ async def get_current_admin_ws(
     if not user_id:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    async with async_session() as session:
+    async with AsyncSessionLocal() as session:
         user = await session.get(User, user_id)
         if not user or user.role != UserRole.ADMIN:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)

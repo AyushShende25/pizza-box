@@ -1,29 +1,22 @@
-from sqlalchemy import select, asc, desc, func, and_
-from sqlalchemy.orm import selectinload
+import math
 from uuid import UUID
-from app.menu.model import Pizza, Topping, ToppingCategory, Size, Crust, PizzaCategory
+
+from sqlalchemy import and_, asc, desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.exceptions import ConflictError, EntityNotFoundError
+from app.menu.model import Crust, Pizza, PizzaCategory, Size, Topping, ToppingCategory
 from app.menu.schema import (
-    PizzaCreate,
-    PizzaUpdate,
-    ToppingCreate,
-    ToppingUpdate,
-    SizeCreate,
-    SizeUpdate,
     CrustCreate,
     CrustUpdate,
+    PizzaCreate,
+    PizzaUpdate,
+    SizeCreate,
+    SizeUpdate,
+    ToppingCreate,
+    ToppingUpdate,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import (
-    PizzaAlreadyExistsError,
-    PizzaNotFoundError,
-    ToppingAlreadyExistsError,
-    ToppingNotFoundError,
-    SizeAlreadyExistsError,
-    SizeNotFoundError,
-    CrustAlreadyExistsError,
-    CrustNotFoundError,
-)
-import math
 
 
 class PizzaService:
@@ -56,7 +49,8 @@ class PizzaService:
         total = await self.session.scalar(count_query)
 
         stmt = (
-            base_query.options(selectinload(Pizza.default_toppings))
+            base_query
+            .options(selectinload(Pizza.default_toppings))
             .order_by(sort_order)
             .limit(limit)
             .offset(skip)
@@ -128,7 +122,10 @@ class PizzaService:
             stmt = stmt.options(selectinload(Pizza.default_toppings))
         pizza = await self.session.scalar(stmt)
         if not pizza:
-            raise PizzaNotFoundError()
+            raise EntityNotFoundError(
+                error_code="PIZZA_NOT_FOUND",
+                message="Pizza does not exist",
+            )
         return pizza
 
     async def create(self, data: PizzaCreate) -> Pizza:
@@ -203,7 +200,10 @@ class PizzaService:
 
         existing = await self.session.scalar(stmt)
         if existing:
-            raise PizzaAlreadyExistsError()
+            raise ConflictError(
+                error_code="PIZZA_ALREADY_EXISTS",
+                message="Pizza with that name already exists",
+            )
 
     async def _get_toppings_by_ids(self, topping_ids: list[UUID]) -> list[Topping]:
         stmt = select(Topping).where(Topping.id.in_(topping_ids))
@@ -263,7 +263,10 @@ class ToppingService:
     async def get_one(self, topping_id: UUID) -> Topping:
         topping = await self.session.get(Topping, topping_id)
         if not topping:
-            raise ToppingNotFoundError()
+            raise EntityNotFoundError(
+                error_code="TOPPING_NOT_FOUND",
+                message="Topping does not exist",
+            )
         return topping
 
     async def update(self, topping_id: UUID, data: ToppingUpdate) -> Topping:
@@ -295,7 +298,10 @@ class ToppingService:
         stmt = select(Topping).where(Topping.name == name)
         existing = await self.session.scalar(stmt)
         if existing:
-            raise ToppingAlreadyExistsError()
+            raise ConflictError(
+                error_code="TOPPING_ALREADY_EXISTS",
+                message="Topping with that name already exists",
+            )
 
 
 class SizeService:
@@ -327,7 +333,10 @@ class SizeService:
     ) -> Size:
         size = await self.session.get(Size, size_id)
         if not size:
-            raise SizeNotFoundError()
+            raise EntityNotFoundError(
+                error_code="SIZE_NOT_FOUND",
+                message="Size does not exist",
+            )
         return size
 
     async def update(self, size_id: UUID, data: SizeUpdate) -> Size:
@@ -359,7 +368,10 @@ class SizeService:
         stmt = select(Size).where(Size.name == name)
         existing = await self.session.scalar(stmt)
         if existing:
-            raise SizeAlreadyExistsError()
+            raise ConflictError(
+                error_code="SIZE_ALREADY_EXISTS",
+                message="Size with that name already exists",
+            )
 
 
 class CrustService:
@@ -391,7 +403,10 @@ class CrustService:
     ) -> Crust:
         crust = await self.session.get(Crust, crust_id)
         if not crust:
-            raise CrustNotFoundError()
+            raise EntityNotFoundError(
+                error_code="CRUST_NOT_FOUND",
+                message="Crust does not exist",
+            )
         return crust
 
     async def update(self, crust_id: UUID, data: CrustUpdate) -> Crust:
@@ -423,4 +438,7 @@ class CrustService:
         stmt = select(Crust).where(Crust.name == name)
         existing = await self.session.scalar(stmt)
         if existing:
-            raise CrustAlreadyExistsError()
+            raise ConflictError(
+                error_code="CRUST_ALREADY_EXISTS",
+                message="Crust with that name already exists",
+            )

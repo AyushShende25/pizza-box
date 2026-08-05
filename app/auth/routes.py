@@ -1,22 +1,23 @@
-from fastapi import APIRouter, status, Depends, Request
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
-from app.core.database import SessionDep
-from app.core.redis import RedisDep
-from app.auth.service import AuthService
-from app.auth.schema import (
-    UserCreate,
-    RegistrationResponse,
-    UserLogin,
-    TokenResponse,
-    RefreshTokenRequest,
-    UserResponse,
-    UserEmail,
-    UserPassword,
-)
+from fastapi.security import OAuth2PasswordRequestForm
+
 from app.auth.dependencies import CurrentUserDep
+from app.auth.schema import (
+    RefreshTokenRequest,
+    RegistrationResponse,
+    TokenResponse,
+    UserCreate,
+    UserEmail,
+    UserLogin,
+    UserPassword,
+    UserResponse,
+)
+from app.auth.service import AuthService
 from app.core.config import settings
-from app.core.exceptions import InvalidRefreshTokenError
+from app.core.database import SessionDep
+from app.core.exceptions import AuthenticationError
+from app.core.redis import RedisDep
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -113,7 +114,10 @@ async def refresh_tokens(
     else:
         refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        raise InvalidRefreshTokenError()
+        raise AuthenticationError(
+            message="Invalid refresh token",
+            error_code="INVALID_REFRESH_TOKEN",
+        )
 
     access_token, new_refresh_token = await AuthService(session, redis).refresh_tokens(
         refresh_token

@@ -1,10 +1,12 @@
 import logging
 import sys
 
+from app.core.config import settings
+
 
 def setup_logger():
-    logger = logging.getLogger("pizzabox")
-    logger.setLevel(logging.INFO)
+    logger = logging.getLogger(settings.PROJECT_NAME)
+    logger.setLevel(settings.LOG_LEVEL)
 
     stream_handler = logging.StreamHandler(sys.stdout)
 

@@ -1,18 +1,15 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from razorpay.errors import SignatureVerificationError
-from sqlalchemy import select, func
 import uuid
+
+from razorpay.errors import SignatureVerificationError
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import AppException, EntityNotFoundError
 from app.libs.razorpay import razorpay_client
-from app.orders.model import Order
-from app.core.exceptions import (
-    OrderNotFoundError,
-    PaymentCreationError,
-    PaymentNotFoundError,
-)
-from app.payments.model import Payment, PaymentProvider, PaymentTransactionStatus
-from app.orders.model import OrderStatus, PaymentStatus
 from app.notifications.events import publish_payment_event
 from app.notifications.schema import PaymentEventData
+from app.orders.model import Order, OrderStatus, PaymentStatus
+from app.payments.model import Payment, PaymentProvider, PaymentTransactionStatus
 from app.utils.logger import logger
 
 
@@ -27,7 +24,10 @@ class PaymentService:
     async def create_razorpay_order(self, order_id: uuid.UUID):
         order = await self.session.scalar(select(Order).where(Order.id == order_id))
         if not order:
-            raise OrderNotFoundError()
+            raise EntityNotFoundError(
+                error_code="ORDER_NOT_FOUND",
+                message="Order with that id does not exist",
+            )
 
         amount_in_paise = int(order.total * 100)
         try:
@@ -43,7 +43,10 @@ class PaymentService:
                 }
             )
         except Exception as e:
-            raise PaymentCreationError(f"Razorpay order creation failed: {str(e)}")
+            raise AppException(
+                error_code="PAYMENT_CREATION_FAILED",
+                message=f"Razorpay order creation failed: {e!s}",
+            )
 
         payment = Payment(
             order_id=order.id,
@@ -73,19 +76,20 @@ class PaymentService:
             select(Payment).where(Payment.id == payment_id)
         )
         if not payment:
-            raise PaymentNotFoundError()
+            raise EntityNotFoundError(
+                error_code="PAYMENT_NOT_FOUND",
+                message="Payment not found",
+            )
 
         if payment.status == PaymentTransactionStatus.SUCCESS:
             return payment
 
         try:
-            self.razorpay_client.utility.verify_payment_signature(
-                {
-                    "razorpay_order_id": razorpay_order_id,
-                    "razorpay_payment_id": razorpay_payment_id,
-                    "razorpay_signature": razorpay_signature,
-                }
-            )
+            self.razorpay_client.utility.verify_payment_signature({
+                "razorpay_order_id": razorpay_order_id,
+                "razorpay_payment_id": razorpay_payment_id,
+                "razorpay_signature": razorpay_signature,
+            })
         except SignatureVerificationError:
             payment.status = PaymentTransactionStatus.FAILED
             payment.error_message = "Invalid payment signature"
@@ -112,7 +116,7 @@ class PaymentService:
             return payment
         except Exception as e:
             payment.status = PaymentTransactionStatus.FAILED
-            payment.error_message = f"Verification error: {str(e)}"
+            payment.error_message = f"Verification error: {e!s}"
             await self.session.commit()
 
             # This is very unlikely to happen, added just type-check satisfaction
@@ -133,7 +137,10 @@ class PaymentService:
                 ),
             )
 
-            raise PaymentCreationError(f"Payment verification failed: {str(e)}")
+            raise AppException(
+                error_code="PAYMENT_CREATION_FAILED",
+                message=f"Payment verification failed: {e!s}",
+            )
 
         payment.razorpay_payment_id = razorpay_payment_id
         payment.razorpay_signature = razorpay_signature
@@ -151,7 +158,10 @@ class PaymentService:
             select(Order).where(Order.id == payment.order_id)
         )
         if not order:
-            raise OrderNotFoundError()
+            raise EntityNotFoundError(
+                error_code="ORDER_NOT_FOUND",
+                message="Order with that id does not exist",
+            )
         order.payment_status = PaymentStatus.PAID
         order.order_status = OrderStatus.CONFIRMED
 

@@ -1,15 +1,16 @@
-from fastapi.responses import JSONResponse
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from app.utils.logger import logger
+
 from app.core.exceptions import AppException
+from app.utils.logger import logger
 
 
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle unexpected exceptions."""
-    logger.error(
-        f"unhandled error {repr(exc)} - URL:  {request.url.path}",
+    logger.exception(
+        f"unhandled error {exc!r} - URL:  {request.url.path}",
         extra={
             "exception_type": type(exc).__name__,
             "url": str(request.url),
@@ -27,7 +28,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 async def app_exception_handler(request: Request, exc: AppException):
     """Handle custom application exceptions."""
-    logger.warning(
+    logger.exception(
         f"Application error: [{exc.error_code}] - {exc.message} - URL: {request.url.path}",
         extra={
             "error_code": exc.error_code,
@@ -46,7 +47,7 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Handle Pydantic validation errors."""
-    logger.warning(
+    logger.exception(
         f"Validation error - URL: {request.url.path}",
         extra={
             "errors": exc.errors(),
@@ -57,8 +58,8 @@ async def validation_exception_handler(
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "message": "Validation failed",
             "error": "VALIDATION_ERROR",
+            "message": "Validation failed",
             "details": {"errors": exc.errors()},
         },
     )
@@ -68,7 +69,7 @@ async def http_exception_handler(
     request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
     """Handle standard HTTP exceptions."""
-    logger.warning(
+    logger.exception(
         f"HTTP error {exc.status_code}: {exc.detail} - URL: {request.url.path}",
         extra={
             "status_code": exc.status_code,

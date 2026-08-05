@@ -1,14 +1,16 @@
-from sqlalchemy import update, select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import (
-    MaxAddressesExceededError,
-    AddressNotFoundError,
-)
-from app.auth.model import User
-from app.address.schema import AddressCreate, AddressUpdate
-from app.address.model import Address
-from app.address.constants import MAX_ADDRESSES_PER_USER
 from uuid import UUID
+
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.address.constants import MAX_ADDRESSES_PER_USER
+from app.address.model import Address
+from app.address.schema import AddressCreate, AddressUpdate
+from app.auth.model import User
+from app.core.exceptions import (
+    BadRequestError,
+    EntityNotFoundError,
+)
 
 
 class AddressesService:
@@ -21,7 +23,10 @@ class AddressesService:
         )
         address_count = count_result or 0
         if address_count >= MAX_ADDRESSES_PER_USER:
-            raise MaxAddressesExceededError()
+            raise BadRequestError(
+                error_code="MAX_ADDRESSES_PER_USER_EXCEEDED",
+                message="User already has too many addresses",
+            )
 
         address_data_dict = data.model_dump()
 
@@ -53,7 +58,10 @@ class AddressesService:
             select(Address).where(Address.id == address_id, Address.user_id == user_id)
         )
         if not address:
-            raise AddressNotFoundError()
+            raise EntityNotFoundError(
+                error_code="ADDRESS_NOT_FOUND",
+                message="Address with that id does not exists",
+            )
         return address
 
     async def update(self, address_id: UUID, data: AddressUpdate, user: User):
