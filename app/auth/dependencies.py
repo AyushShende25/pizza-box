@@ -1,15 +1,23 @@
 from typing import Annotated
 
-from fastapi import Cookie, Depends, Request, WebSocket, WebSocketException, status
+from fastapi import (
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketException,
+    status,
+)
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.utils import get_authorization_scheme_param
 
 from app.auth.model import User, UserRole
-from app.auth.utils import decode_token
+from app.auth.service import AuthService
+from app.auth.utils import verify_token
 from app.core.database import AsyncSessionLocal, SessionDep
 from app.core.exceptions import (
     AuthenticationError,
-    AuthorizationError,
     EntityNotFoundError,
 )
 from app.libs.fastmail import FastMailService
@@ -23,10 +31,19 @@ def get_mail_service() -> FastMailService:
 FastMailDep = Annotated[FastMailService, Depends(get_mail_service)]
 
 
+def get_auth_service(session: SessionDep) -> AuthService:
+    """Provides a fresh AuthService instance"""
+    return AuthService(session)
+
+
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+
+
 class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
-    async def __call__(self, request: Request):
+    async def __call__(self, request: Request) -> str | None:
         token = None
         auth_header = request.headers.get("Authorization")
+
         if auth_header:
             scheme, param = get_authorization_scheme_param(auth_header)
             if scheme.lower() == "bearer":
@@ -39,35 +56,40 @@ class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
                     message="Not authenticated",
                     error_code="MISSING_TOKEN",
                 )
-            else:
-                return None
+            return None
+
         return token
 
 
-oauth2_scheme = OAuth2PasswordBearerWithCookie(tokenUrl="/api/v1/auth/token")
+oauth2_scheme = OAuth2PasswordBearerWithCookie(
+    tokenUrl="/api/v1/auth/login", auto_error=False
+)
 
 
 async def get_current_user(
-    session: SessionDep, token: Annotated[str, Depends(oauth2_scheme)]
+    session: SessionDep,
+    token: Annotated[str, Depends(oauth2_scheme)],
 ):
-    payload = decode_token(token)
+    if not token:
+        raise AuthenticationError(
+            error_code="MISSING_TOKEN",
+            message="Not authenticated",
+        )
+    payload = verify_token(token)
     if not payload:
-        raise AuthenticationError()
+        raise AuthenticationError(
+            error_code="INVALID_TOKEN",
+            message="Invalid or expired token",
+        )
 
-    user_id = payload.get("sub")
+    user_id = payload.sub
     if user_id is None:
         raise AuthenticationError(
-            message="Token missing user identifier",
             error_code="INVALID_TOKEN_STRUCTURE",
+            message="Token missing user identifier",
         )
 
-    if payload.get("refresh"):
-        raise AuthenticationError(
-            message="Refresh token cannot be used for authentication",
-            error_code="REFRESH_TOKEN_MISUSE",
-        )
-
-    user = await session.get(User, user_id)
+    user = await AuthService(session).get_user_by_id(user_id=user_id)
     if not user:
         raise EntityNotFoundError(
             message="User not found",
@@ -79,19 +101,20 @@ async def get_current_user(
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 
 oauth2_optional = OAuth2PasswordBearerWithCookie(
-    tokenUrl="/api/v1/auth/token",
+    tokenUrl="/api/v1/auth/login",
     auto_error=False,
 )
 
 
 async def get_optional_user(
-    session: SessionDep, token: Annotated[str | None, Depends(oauth2_optional)] = None
+    session: SessionDep,
+    token: Annotated[str | None, Depends(oauth2_optional)] = None,
 ) -> User | None:
     if not token:
         return None
     try:
-        return await get_current_user(session, token)
-    except Exception:
+        return await get_current_user(session=session, token=token)
+    except HTTPException:
         return None
 
 
@@ -99,18 +122,19 @@ OptionalUserDep = Annotated[User | None, Depends(get_optional_user)]
 
 
 class RoleChecker:
-    def __init__(self, roles):
-        self.roles = roles
+    def __init__(self, allowed_roles: list[UserRole]):
+        self.allowed_roles = allowed_roles
 
     async def __call__(self, current_user: CurrentUserDep):
-        if current_user.role not in self.roles:
-            raise AuthorizationError()
+        if current_user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to perform this action",
+            )
         return current_user
 
 
-AdminOnlyDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN]))]
-
-UserOrAdminDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN, UserRole.USER]))]
+AdminUserDep = Annotated[User, Depends(RoleChecker([UserRole.ADMIN]))]
 
 
 async def get_current_user_ws(
@@ -120,16 +144,16 @@ async def get_current_user_ws(
     if token is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    payload = decode_token(token)
+    payload = verify_token(token)
     if not payload:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    user_id = payload.get("sub")
+    user_id = payload.sub
     if user_id is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     async with AsyncSessionLocal() as session:
-        user = await session.get(User, user_id)
+        user = await AuthService(session).get_user_by_id(user_id=user_id)
         if not user:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
@@ -143,17 +167,17 @@ async def get_current_admin_ws(
     if token is None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    payload = decode_token(token)
+    payload = verify_token(token)
     if not payload:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
-    user_id = payload.get("sub")
+    user_id = payload.sub
 
     if not user_id:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 
     async with AsyncSessionLocal() as session:
-        user = await session.get(User, user_id)
+        user = await AuthService(session).get_user_by_id(user_id=user_id)
         if not user or user.role != UserRole.ADMIN:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
 

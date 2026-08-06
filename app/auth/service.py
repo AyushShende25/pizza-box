@@ -1,16 +1,15 @@
-from datetime import timedelta
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.model import User, UserRole
 from app.auth.schema import UserCreate, UserLogin
+from app.auth.token_store import AuthRedisRepository
 from app.auth.utils import (
     create_token,
-    decode_token,
     generate_urlsafe_token,
     get_password_hash,
     verify_password,
+    verify_token,
 )
 from app.core.config import settings
 from app.core.exceptions import (
@@ -19,7 +18,6 @@ from app.core.exceptions import (
     ConflictError,
     EntityNotFoundError,
 )
-from app.core.redis import RedisService
 from app.utils.templates.email_templates import (
     forgot_password_email_html,
     password_reset_confirmation_email_html,
@@ -30,51 +28,64 @@ from app.workers.email_tasks import send_mail_task
 
 
 class AuthService:
-    """Service class for authentication operations."""
+    """Service class for authentication operations"""
 
     def __init__(
         self,
         session: AsyncSession,
-        redis: RedisService,
     ):
         self.session = session
-        self.redis = redis
 
     async def get_user_by_email(self, email: str) -> User | None:
         stmt = select(User).where(User.email == email)
-        result = await self.session.scalars(stmt)
-        return result.first()
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def get_user_by_id(self, user_id: str) -> User | None:
-        user = await self.session.get(User, user_id)
-        return user
+        stmt = select(User).where(User.id == user_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
-    async def create_user(self, user_credentials: UserCreate) -> User:
-        existing_user = await self.get_user_by_email(user_credentials.email)
+    async def create_user(
+        self,
+        input: UserCreate,
+        token_store: AuthRedisRepository,
+        auto_verify: bool = False,
+    ) -> User:
+        existing_user = await self.get_user_by_email(input.email)
         if existing_user:
             raise ConflictError(
                 error_code="USER_ALREADY_EXISTS",
-                message="User with that email already exists",
+                message=f"User with {input.email} email already exists",
             )
 
-        password_hash = get_password_hash(user_credentials.password)
+        password_hash = get_password_hash(input.password)
 
         user = User(
-            email=user_credentials.email,
+            email=input.email,
             password_hash=password_hash,
-            first_name=user_credentials.first_name,
-            last_name=user_credentials.last_name,
+            first_name=input.first_name,
+            last_name=input.last_name,
+            is_verified=auto_verify,
         )
 
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
 
-        await self._send_verification_email(user)
+        if not auto_verify:
+            await self._send_verification_email(user, token_store)
         return user
 
-    async def verify(self, token: str):
-        user_id = await self.redis.verify_token(token=token, token_type="verification")
+    async def verify_mail(
+        self,
+        token: str,
+        token_store: AuthRedisRepository,
+    ) -> User:
+        user_id = await token_store.get_mail_token_user(
+            token=token,
+            token_type="verification",
+        )
         if not user_id:
             raise AuthenticationError(
                 error_code="INVALID_TOKEN",
@@ -84,7 +95,7 @@ class AuthService:
         user = await self.get_user_by_id(user_id)
         if not user:
             raise EntityNotFoundError(
-                message="User not found",
+                message=f"User: {user_id} not found",
                 error_code="USER_NOT_FOUND",
             )
 
@@ -92,19 +103,22 @@ class AuthService:
         await self.session.commit()
         await self.session.refresh(user)
 
-        await self.redis.delete_token(token, token_type="verification")
+        await token_store.delete_mail_token(
+            token=token,
+            token_type="verification",
+        )
 
         send_mail_task.delay(
             recipients=[user.email],
             subject="welcome to pizza-box",
             body=welcome_email_html(user),
         )
-        return {"message": "user account verified successfully"}
+        return user
 
-    async def authenticate_user(self, credentials: UserLogin) -> User:
-        user = await self.get_user_by_email(credentials.email)
+    async def authenticate_user(self, input: UserLogin) -> User:
+        user = await self.get_user_by_email(input.email)
 
-        if not user or not verify_password(credentials.password, user.password_hash):
+        if not user or not verify_password(input.password, user.password_hash):
             raise AuthenticationError(
                 error_code="INVALID_CREDENTIALS",
                 message="Incorrect email or password",
@@ -116,75 +130,101 @@ class AuthService:
             )
         return user
 
-    async def generate_tokens(self, user: User) -> tuple[str, str]:
-        access_token, _ = create_token(
+    async def generate_tokens(
+        self,
+        user: User,
+        token_store: AuthRedisRepository,
+    ) -> tuple[str, str]:
+        access = create_token(
             sub=str(user.id),
-            payload={
-                "email": user.email,
-            },
+            payload={"email": user.email, "role": user.role.value},
+            refresh=False,
         )
-        refresh_token, refresh_payload = create_token(
+        refresh = create_token(
             sub=str(user.id),
             refresh=True,
-            expiry=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         )
-        # Store in Redis with expiration
-        refresh_jti = refresh_payload["jti"]
-        await self.redis.store_refresh_jti(
-            refresh_jti,
-            str(user.id),
-        )
-        return access_token, refresh_token
 
-    async def refresh_tokens(self, refresh_token: str) -> tuple[str, str]:
-        payload = decode_token(refresh_token)
-        if not payload or not payload.get("refresh"):
+        # Store in Redis with expiration
+        await token_store.create_refresh_session(
+            session_id=refresh.jti,
+            user_id=str(user.id),
+        )
+
+        return access.token, refresh.token
+
+    async def refresh_tokens(
+        self,
+        refresh_token: str,
+        token_store: AuthRedisRepository,
+    ) -> tuple[str, str]:
+        payload = verify_token(
+            token=refresh_token,
+            expected_type="refresh",
+        )
+        if not payload:
             raise AuthenticationError(
                 message="Invalid refresh token",
                 error_code="INVALID_REFRESH_TOKEN",
             )
 
-        user_id = payload.get("sub")
-        refresh_jti = payload.get("jti")
+        user_id = payload.sub
+        refresh_jti = payload.jti
+
         if not user_id or not refresh_jti:
             raise AuthenticationError(
                 message="Invalid refresh token",
                 error_code="INVALID_REFRESH_TOKEN",
             )
 
-        token_valid = await self.redis.validate_refresh_jti(refresh_jti, user_id)
-        if not token_valid:
+        session_user_id = await token_store.get_refresh_session_user(
+            session_id=refresh_jti
+        )
+        if not session_user_id == user_id:
             raise AuthenticationError(
                 message="Invalid refresh token",
                 error_code="INVALID_REFRESH_TOKEN",
             )
 
-        user = await self.session.get(User, user_id)
+        user = await self.get_user_by_id(user_id)
         if not user:
             raise EntityNotFoundError(
                 message="User not found",
                 error_code="USER_NOT_FOUND",
             )
 
-        # Delete the old refresh-token-id from redis
-        await self.redis.revoke_refresh_jti(refresh_jti)
+        # Delete the old session-id from redis
+        await token_store.delete_refresh_session(session_id=refresh_jti)
 
-        return await self.generate_tokens(user)
+        return await self.generate_tokens(user, token_store)
 
-    async def logout_user(self, refresh_token: str):
-        payload = decode_token(refresh_token)
-        if payload and payload.get("refresh"):
-            refresh_jti = payload.get("jti")
-            if refresh_jti:
-                # Remove refresh token-id from Redis
-                await self.redis.revoke_refresh_jti(refresh_jti)
+    async def logout_user(
+        self,
+        refresh_token: str,
+        token_store: AuthRedisRepository,
+    ) -> None:
+        payload = verify_token(
+            token=refresh_token,
+            expected_type="refresh",
+        )
+        if payload and payload.type == "refresh" and payload.jti:
+            await token_store.delete_refresh_session(session_id=payload.jti)
 
-    async def resend_verification_token(self, email: str):
+    async def logout_user_all(
+        self,
+        user_id: str,
+        token_store: AuthRedisRepository,
+    ) -> None:
+        await token_store.delete_all_refresh_sessions(user_id=user_id)
+
+    async def resend_verification_token(
+        self,
+        email: str,
+        token_store: AuthRedisRepository,
+    ) -> None:
         user = await self.get_user_by_email(email)
         if not user:
-            return {
-                "message": "If this email is registered and not verified, a verification email has been sent."
-            }
+            return
 
         if user.is_verified:
             raise BadRequestError(
@@ -192,17 +232,19 @@ class AuthService:
                 message="User is already verified",
             )
 
-        await self._send_verification_email(user)
+        await self._send_verification_email(user, token_store)
 
-        return {
-            "message": "If this email is registered and not verified, a verification email has been sent."
-        }
-
-    async def _send_verification_email(self, user: User):
+    async def _send_verification_email(
+        self,
+        user: User,
+        token_store: AuthRedisRepository,
+    ) -> None:
         verification_token = generate_urlsafe_token()
 
-        await self.redis.store_token(
-            token=verification_token, user_id=str(user.id), token_type="verification"
+        await token_store.store_mail_token(
+            token=verification_token,
+            user_id=str(user.id),
+            token_type="verification",
         )
 
         link = f"{settings.CLIENT_URL}/verify-email?token={verification_token}&email={user.email}"
@@ -212,19 +254,22 @@ class AuthService:
             subject="Verify your email",
             body=verification_email_html(link),
         )
-        return True
 
-    async def forgot_pwd(self, email: str):
+    async def forgot_password(
+        self,
+        email: str,
+        token_store: AuthRedisRepository,
+    ) -> None:
         user = await self.get_user_by_email(email)
         if not user or not user.is_verified:
-            return {
-                "message": "If an account with this email exists, you will receive a reset link"
-            }
+            return
 
         reset_token = generate_urlsafe_token()
 
-        await self.redis.store_token(
-            token=reset_token, user_id=str(user.id), token_type="reset"
+        await token_store.store_mail_token(
+            token=reset_token,
+            user_id=str(user.id),
+            token_type="reset",
         )
 
         if user.role == UserRole.ADMIN:
@@ -238,16 +283,20 @@ class AuthService:
             body=forgot_password_email_html(link),
         )
 
-        return {
-            "message": "If an account with this email exists, you will receive a reset link"
-        }
-
-    async def reset_pwd(self, token: str, password: str):
-        user_id = await self.redis.verify_token(token=token, token_type="reset")
+    async def reset_password(
+        self,
+        token: str,
+        password: str,
+        token_store: AuthRedisRepository,
+    ) -> User:
+        user_id = await token_store.get_mail_token_user(
+            token=token,
+            token_type="reset",
+        )
         if not user_id:
             raise AuthenticationError(
                 error_code="INVALID_TOKEN",
-                message="Invalid or expired token",
+                message="Invalid or expired reset token",
             )
 
         user = await self.get_user_by_id(user_id)
@@ -257,7 +306,10 @@ class AuthService:
                 error_code="USER_NOT_FOUND",
             )
 
-        await self.redis.delete_token(token, token_type="reset")
+        await token_store.delete_mail_token(
+            token=token,
+            token_type="reset",
+        )
 
         password_hash = get_password_hash(password)
         user.password_hash = password_hash
@@ -265,12 +317,12 @@ class AuthService:
         await self.session.refresh(user)
 
         # revoke all refresh-tokens-ids for this user
-        await self.redis.revoke_all_user_refresh_jtis(str(user.id))
+        await token_store.delete_all_refresh_sessions(user_id=str(user.id))
 
         send_mail_task.delay(
             recipients=[user.email],
-            subject="password-reset successful",
+            subject="Password Reset Successful",
             body=password_reset_confirmation_email_html(user),
         )
 
-        return {"message": "password reset successful"}
+        return user

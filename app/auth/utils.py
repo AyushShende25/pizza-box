@@ -1,44 +1,75 @@
-from passlib.context import CryptContext
-from datetime import timedelta, datetime, timezone
-from uuid import uuid4
-import jwt
 import secrets
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+import jwt
+from pwdlib import PasswordHash
+
+from app.auth.schema import (
+    CreateTokenResponse,
+    JwtTokenType,
+    TokenPayload,
+)
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+password_hash = PasswordHash.recommended()
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return password_hash.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hash=hashed_password)
+    return password_hash.verify(password=plain_password, hash=hashed_password)
 
 
 def create_token(
     sub: str,
     payload: dict | None = None,
-    expiry: timedelta | None = None,
+    expires_delta: timedelta | None = None,
     refresh: bool = False,
-) -> tuple[str, dict]:
-    encode = {
+) -> CreateTokenResponse:
+    token_type = "refresh" if refresh else "access"
+
+    default_expiry = (
+        timedelta(hours=settings.REFRESH_TOKEN_EXPIRE_HOURS)
+        if refresh
+        else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    jti = str(uuid4())
+
+    to_encode = {
         **(payload or {}),
         "sub": sub,
-        "exp": datetime.now(timezone.utc)
-        + (expiry or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)),
-        "jti": str(uuid4()),
-        "refresh": refresh,
+        "type": token_type,
+        "jti": jti,
+        "exp": datetime.now(UTC) + (expires_delta or default_expiry),
     }
 
-    token = jwt.encode(encode, settings.JWT_SECRET_KEY, settings.JWT_ALGORITHM)
-    return token, encode
+    encoded_token = jwt.encode(
+        to_encode,
+        key=settings.JWT_SECRET_KEY.get_secret_value(),
+        algorithm=settings.JWT_ALGORITHM,
+    )
+    return CreateTokenResponse(token=encoded_token, jti=jti)
 
 
-def decode_token(token: str) -> dict | None:
+def verify_token(
+    token: str,
+    expected_type: JwtTokenType = "access",
+) -> TokenPayload | None:
     try:
-        return jwt.decode(token, settings.JWT_SECRET_KEY, [settings.JWT_ALGORITHM])
-    except jwt.PyJWTError:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY.get_secret_value(),
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"require": ["exp", "sub", "type", "jti"]},
+        )
+        if payload.get("type") != expected_type:
+            return None
+        return TokenPayload(**payload)
+    except jwt.InvalidTokenError:
         return None
 
 

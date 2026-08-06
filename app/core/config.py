@@ -35,21 +35,21 @@ class Settings(BaseSettings):
     VALIDATE_CERTS: bool = True
 
     # JWT Settings
-    JWT_SECRET_KEY: str
+    JWT_SECRET_KEY: SecretStr
     JWT_ALGORITHM: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_HOURS: int = 24
 
     # Bucket storage settings
     BUCKET_ACCESS_KEY_ID: str
-    BUCKET_SECRET_ACCESS_KEY: str
+    BUCKET_SECRET_ACCESS_KEY: SecretStr
     BUCKET_CUSTOM_DOMAIN: str
     BUCKET_NAME: str
     BUCKET_REGION_NAME: str
 
     # Razorpay Keys
     RAZORPAY_KEY_ID: str
-    RAZORPAY_KEY_SECRET: str
+    RAZORPAY_KEY_SECRET: SecretStr
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

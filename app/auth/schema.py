@@ -1,6 +1,9 @@
-from pydantic import Field, EmailStr
+import uuid
 from datetime import datetime
-from uuid import UUID
+from typing import Literal
+
+from pydantic import EmailStr, Field
+
 from app.auth.model import UserRole
 from app.core.base_schema import BaseSchema
 
@@ -21,16 +24,30 @@ class UserLogin(BaseSchema):
 
 
 class UserResponse(UserBase):
-    id: UUID
+    id: uuid.UUID
     is_verified: bool
     created_at: datetime
     updated_at: datetime
     role: UserRole
 
 
+class MessageResponse(BaseSchema):
+    message: str
+
+
 class RegistrationResponse(BaseSchema):
     message: str
     user: UserResponse
+
+
+class LoginResponse(BaseSchema):
+    class UserInfo(BaseSchema):
+        id: uuid.UUID
+        email: EmailStr
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserInfo
 
 
 class TokenResponse(BaseSchema):
@@ -49,3 +66,20 @@ class UserEmail(BaseSchema):
 
 class UserPassword(BaseSchema):
     password: str
+
+
+class TokenPayload(BaseSchema):
+    sub: str
+    jti: str
+    type: str
+    exp: int
+
+
+class CreateTokenResponse(BaseSchema):
+    token: str
+    jti: str
+
+
+JwtTokenType = Literal["access", "refresh"]
+
+MailTokenType = Literal["reset", "verification"]

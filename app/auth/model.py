@@ -1,10 +1,12 @@
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Uuid, TIMESTAMP, func, Boolean, Enum
-from datetime import datetime
-import uuid
 import enum
-from app.core.base import Base
+import uuid
+from datetime import datetime
+
+from sqlalchemy import TIMESTAMP, Boolean, Enum, String, Uuid, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.address.model import Address
+from app.core.base import Base
 from app.notifications.model import Notification
 
 
@@ -21,19 +23,37 @@ class User(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    email: Mapped[str] = mapped_column(String(length=255), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(
+        String(length=255),
+        nullable=False,
+        unique=True,
+    )
     password_hash: Mapped[str] = mapped_column(
         String(length=255),
         nullable=False,
     )
-    first_name: Mapped[str] = mapped_column(String(length=255), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(length=255), nullable=False)
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    first_name: Mapped[str] = mapped_column(
+        String(length=255),
+        nullable=False,
+    )
+    last_name: Mapped[str] = mapped_column(
+        String(length=255),
+        nullable=False,
+    )
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole), default=UserRole.USER, nullable=False
+        Enum(UserRole),
+        default=UserRole.USER,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
@@ -43,11 +63,13 @@ class User(Base):
     )
 
     addresses: Mapped[list["Address"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     notifications: Mapped[list["Notification"]] = relationship(
-        "Notification", back_populates="user", cascade="all, delete-orphan"
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, title='{self.email}', author='{self.first_name}')>"
+        return f"<User(id={self.id}, email='{self.email}', name='{self.first_name} {self.last_name}')>"
