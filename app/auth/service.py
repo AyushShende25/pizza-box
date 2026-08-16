@@ -48,24 +48,24 @@ class AuthService:
 
     async def create_user(
         self,
-        input: UserCreate,
+        data: UserCreate,
         token_store: AuthRedisRepository,
         auto_verify: bool = False,
     ) -> User:
-        existing_user = await self.get_user_by_email(input.email)
+        existing_user = await self.get_user_by_email(data.email)
         if existing_user:
             raise ConflictError(
                 error_code="USER_ALREADY_EXISTS",
-                message=f"User with {input.email} email already exists",
+                message=f"User with {data.email} email already exists",
             )
 
-        password_hash = get_password_hash(input.password)
+        password_hash = get_password_hash(data.password)
 
         user = User(
-            email=input.email,
+            email=data.email,
             password_hash=password_hash,
-            first_name=input.first_name,
-            last_name=input.last_name,
+            first_name=data.first_name,
+            last_name=data.last_name,
             is_verified=auto_verify,
         )
 
@@ -115,10 +115,10 @@ class AuthService:
         )
         return user
 
-    async def authenticate_user(self, input: UserLogin) -> User:
-        user = await self.get_user_by_email(input.email)
+    async def authenticate_user(self, data: UserLogin) -> User:
+        user = await self.get_user_by_email(data.email)
 
-        if not user or not verify_password(input.password, user.password_hash):
+        if not user or not verify_password(data.password, user.password_hash):
             raise AuthenticationError(
                 error_code="INVALID_CREDENTIALS",
                 message="Incorrect email or password",

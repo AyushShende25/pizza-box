@@ -10,7 +10,7 @@ from app.core.base import Base
 from app.notifications.model import Notification
 
 
-class UserRole(enum.Enum):
+class UserRole(str, enum.Enum):
     USER = "user"
     ADMIN = "admin"
 

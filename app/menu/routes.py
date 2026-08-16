@@ -1,28 +1,35 @@
-from fastapi import APIRouter, status, Query
+from typing import Annotated
 from uuid import UUID
-from app.core.database import SessionDep
-from app.menu.schema import (
-    PizzaCreate,
-    PizzaResponse,
-    PizzaUpdate,
-    ToppingResponse,
-    ToppingCreate,
-    ToppingUpdate,
-    SizeResponse,
-    SizeCreate,
-    SizeUpdate,
-    CrustResponse,
+
+from fastapi import APIRouter, Query, status
+
+from app.auth.dependencies import AdminUserDep
+
+from .dependencies import (
+    CrustServiceDep,
+    PizzaServiceDep,
+    SizeServiceDep,
+    ToppingServiceDep,
+)
+from .schema import (
     CrustCreate,
+    CrustQueryParams,
+    CrustResponse,
     CrustUpdate,
     PaginatedPizzaResponse,
+    PizzaCreate,
     PizzaQueryParams,
-    ToppingQueryParams,
+    PizzaResponse,
+    PizzaUpdate,
+    SizeCreate,
     SizeQueryParams,
-    CrustQueryParams,
+    SizeResponse,
+    SizeUpdate,
+    ToppingCreate,
+    ToppingQueryParams,
+    ToppingResponse,
+    ToppingUpdate,
 )
-from app.auth.dependencies import AdminOnlyDep
-from app.menu.service import PizzaService, ToppingService, SizeService, CrustService
-from typing import Annotated
 
 menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
@@ -34,68 +41,70 @@ menu_router = APIRouter(prefix="/menu", tags=["Menu"])
 
 @menu_router.get(
     "/pizzas",
-    response_model=PaginatedPizzaResponse,
     status_code=status.HTTP_200_OK,
+    response_model=PaginatedPizzaResponse,
 )
 async def get_all_pizzas(
-    session: SessionDep,
-    pizza_params: Annotated[PizzaQueryParams, Query()],
+    pizza_service: PizzaServiceDep,
+    params: Annotated[PizzaQueryParams, Query()],
 ):
     """Get all pizzas with pagination, sorting, and filtering options"""
-    return await PizzaService(session).get_all(
-        page=pizza_params.page,
-        limit=pizza_params.limit,
-        sort_by=pizza_params.sort_by,
-        name=pizza_params.name,
-        category=pizza_params.category,
-        is_available=pizza_params.is_available,
-        featured=pizza_params.featured,
+    return await pizza_service.get_all(
+        page=params.page,
+        limit=params.limit,
+        sort_by=params.sort_by,
+        order=params.order,
+        food_type=params.food_type,
+        name=params.name,
+        is_available=params.is_available,
+        is_featured=params.is_featured,
     )
 
 
 @menu_router.post(
     "/pizzas",
-    response_model=PizzaResponse,
     status_code=status.HTTP_201_CREATED,
+    response_model=PizzaResponse,
 )
 async def create_pizza(
-    pizza_data: PizzaCreate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: PizzaCreate,
+    pizza_service: PizzaServiceDep,
+    _: AdminUserDep,
 ):
     """Admin endpoint to create new pizza"""
-    return await PizzaService(session).create(pizza_data)
+    return await pizza_service.create(data=data)
 
 
 @menu_router.get(
     "/pizzas/{pizza_id}",
-    response_model=PizzaResponse,
     status_code=status.HTTP_200_OK,
+    response_model=PizzaResponse,
 )
 async def get_pizza_by_id(
     pizza_id: UUID,
-    session: SessionDep,
+    pizza_service: PizzaServiceDep,
 ):
     """
     Get detailed information about a specific pizza.
     """
-    return await PizzaService(session).get_one(pizza_id)
+    return await pizza_service.get_one(pizza_id=pizza_id)
 
 
 @menu_router.patch(
     "/pizzas/{pizza_id}",
+    status_code=status.HTTP_200_OK,
     response_model=PizzaResponse,
 )
 async def update_pizza(
     pizza_id: UUID,
-    pizza_data: PizzaUpdate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: PizzaUpdate,
+    pizza_service: PizzaServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to update pizza details.
     """
-    return await PizzaService(session).update(pizza_id, pizza_data)
+    return await pizza_service.update(pizza_id=pizza_id, data=data)
 
 
 @menu_router.delete(
@@ -104,13 +113,13 @@ async def update_pizza(
 )
 async def delete_pizza(
     pizza_id: UUID,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    pizza_service: PizzaServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to  remove a pizza from menu.
     """
-    return await PizzaService(session).delete(pizza_id)
+    return await pizza_service.delete(pizza_id=pizza_id)
 
 
 # ===========================================================
@@ -120,67 +129,73 @@ async def delete_pizza(
 
 @menu_router.get(
     "/toppings",
+    status_code=status.HTTP_200_OK,
     response_model=list[ToppingResponse],
 )
 async def get_all_toppings(
-    session: SessionDep,
-    topping_params: Annotated[ToppingQueryParams, Query()],
+    topping_service: ToppingServiceDep,
+    params: Annotated[ToppingQueryParams, Query()],
 ):
     """
-    Get all available toppings for public viewing.
-    Filter by category (meat, vegetable, cheese, sauce, etc) or vegetarian options.
+    Get all toppings for public viewing.
+    Filter by category (meat, vegetable, cheese, sauce, etc), availability or food-type options.
     """
-    return await ToppingService(session).get_all(
-        category=topping_params.category,
-        vegetarian_only=topping_params.vegetarian_only,
-        is_available=topping_params.is_available,
+    return await topping_service.get_all(
+        category=params.category,
+        food_type=params.food_type,
+        is_available=params.is_available,
     )
 
 
 @menu_router.post(
     "/toppings",
-    response_model=ToppingResponse,
     status_code=status.HTTP_201_CREATED,
+    response_model=ToppingResponse,
 )
 async def create_topping(
-    topping_data: ToppingCreate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: ToppingCreate,
+    topping_service: ToppingServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to add new topping.
     """
-    return await ToppingService(session).create(topping_data)
+    return await topping_service.create(data=data)
 
 
 @menu_router.get(
     "/toppings/{topping_id}",
+    status_code=status.HTTP_200_OK,
     response_model=ToppingResponse,
 )
 async def get_topping_by_id(
     topping_id: UUID,
-    session: SessionDep,
+    topping_service: ToppingServiceDep,
 ):
     """
     Get details of a specific topping.
     """
-    return await ToppingService(session).get_one(topping_id)
+    return await topping_service.get_one(topping_id=topping_id)
 
 
 @menu_router.patch(
     "/toppings/{topping_id}",
+    status_code=status.HTTP_200_OK,
     response_model=ToppingResponse,
 )
 async def update_topping(
     topping_id: UUID,
-    topping_data: ToppingUpdate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: ToppingUpdate,
+    topping_service: ToppingServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to update topping details, pricing, or availability.
     """
-    return await ToppingService(session).update(topping_id, topping_data)
+    return await topping_service.update(
+        topping_id=topping_id,
+        data=data,
+    )
 
 
 @menu_router.delete(
@@ -189,13 +204,13 @@ async def update_topping(
 )
 async def delete_topping(
     topping_id: UUID,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    topping_service: ToppingServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to remove topping.
     """
-    return await ToppingService(session).delete(topping_id)
+    return await topping_service.delete(topping_id=topping_id)
 
 
 # ===========================================================
@@ -205,48 +220,55 @@ async def delete_topping(
 
 @menu_router.get(
     "/sizes",
+    status_code=status.HTTP_200_OK,
     response_model=list[SizeResponse],
 )
 async def get_all_sizes(
-    session: SessionDep,
-    size_params: Annotated[SizeQueryParams, Query()],
+    size_service: SizeServiceDep,
+    params: Annotated[SizeQueryParams, Query()],
 ):
     """
     Get all pizza sizes with pricing multipliers.
     """
-    return await SizeService(session).get_all(available_only=size_params.available_only)
+    return await size_service.get_all(
+        is_available=params.is_available,
+    )
 
 
 @menu_router.post(
     "/sizes",
-    response_model=SizeResponse,
     status_code=status.HTTP_201_CREATED,
+    response_model=SizeResponse,
 )
 async def create_size(
-    size_data: SizeCreate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: SizeCreate,
+    size_service: SizeServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to add new pizza size option.
     """
-    return await SizeService(session).create(size_data)
+    return await size_service.create(data=data)
 
 
 @menu_router.patch(
     "/sizes/{size_id}",
+    status_code=status.HTTP_200_OK,
     response_model=SizeResponse,
 )
 async def update_size(
     size_id: UUID,
-    size_data: SizeUpdate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: SizeUpdate,
+    size_service: SizeServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to update size details or pricing multiplier.
     """
-    return await SizeService(session).update(size_id, size_data)
+    return await size_service.update(
+        size_id=size_id,
+        data=data,
+    )
 
 
 @menu_router.delete(
@@ -255,13 +277,13 @@ async def update_size(
 )
 async def delete_size(
     size_id: UUID,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    size_service: SizeServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to remove size option.
     """
-    return await SizeService(session).delete(size_id)
+    return await size_service.delete(size_id=size_id)
 
 
 # ===========================================================
@@ -271,64 +293,70 @@ async def delete_size(
 
 @menu_router.get(
     "/crusts",
+    status_code=status.HTTP_200_OK,
     response_model=list[CrustResponse],
 )
 async def get_all_crusts(
-    session: SessionDep,
-    crust_params: Annotated[CrustQueryParams, Query()],
+    crust_service: CrustServiceDep,
+    params: Annotated[CrustQueryParams, Query()],
 ):
     """
     Get all crust options with pricing adjustments.
     """
-    return await CrustService(session).get_all(
-        available_only=crust_params.available_only
+    return await crust_service.get_all(
+        is_available=params.is_available,
     )
 
 
 @menu_router.post(
     "/crusts",
-    response_model=CrustResponse,
     status_code=status.HTTP_201_CREATED,
+    response_model=CrustResponse,
 )
 async def create_crust(
-    crust_data: CrustCreate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: CrustCreate,
+    crust_service: CrustServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to add new crust option.
     """
-    return await CrustService(session).create(crust_data)
+    return await crust_service.create(data=data)
 
 
 @menu_router.get(
     "/crusts/{crust_id}",
+    status_code=status.HTTP_200_OK,
     response_model=CrustResponse,
 )
 async def get_crust_by_id(
     crust_id: UUID,
-    session: SessionDep,
+    crust_service: CrustServiceDep,
 ):
     """
     Get details of a specific crust.
     """
-    return await CrustService(session).get_one(crust_id)
+    return await crust_service.get_one(crust_id=crust_id)
 
 
 @menu_router.patch(
     "/crusts/{crust_id}",
+    status_code=status.HTTP_200_OK,
     response_model=CrustResponse,
 )
 async def update_crust(
     crust_id: UUID,
-    crust_data: CrustUpdate,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    data: CrustUpdate,
+    crust_service: CrustServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to update crust details or pricing.
     """
-    return await CrustService(session).update(crust_id, crust_data)
+    return await crust_service.update(
+        crust_id=crust_id,
+        data=data,
+    )
 
 
 @menu_router.delete(
@@ -337,10 +365,10 @@ async def update_crust(
 )
 async def delete_crust(
     crust_id: UUID,
-    session: SessionDep,
-    _: AdminOnlyDep,
+    crust_service: CrustServiceDep,
+    _: AdminUserDep,
 ):
     """
     Admin endpoint to remove crust option.
     """
-    return await CrustService(session).delete(crust_id)
+    return await crust_service.delete(crust_id=crust_id)

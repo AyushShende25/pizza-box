@@ -29,13 +29,13 @@ auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
     response_model=RegistrationResponse,
 )
 async def register(
-    input: UserCreate,
+    data: UserCreate,
     auth_service: AuthServiceDep,
     token_store: AuthRedisRepositoryDep,
 ):
     """Register a new user"""
     user = await auth_service.create_user(
-        input=input,
+        data=data,
         token_store=token_store,
     )
     return {
@@ -73,7 +73,7 @@ async def login(
     token_store: AuthRedisRepositoryDep,
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    input: UserLogin | None = None,
+    data: UserLogin | None = None,
 ):
     """User login"""
     email = None
@@ -82,9 +82,9 @@ async def login(
     if form_data and form_data.username:
         email = form_data.username
         password = form_data.password
-    elif input:
-        email = input.email
-        password = input.password
+    elif data:
+        email = data.email
+        password = data.password
 
     if not email or not password:
         raise BadRequestError(
@@ -93,7 +93,7 @@ async def login(
         )
 
     user = await auth_service.authenticate_user(
-        input=UserLogin(email=email, password=password)
+        data=UserLogin(email=email, password=password)
     )
 
     access_token, refresh_token = await auth_service.generate_tokens(
@@ -262,13 +262,13 @@ async def get_me(current_user: CurrentUserDep):
     response_model=MessageResponse,
 )
 async def resend_verification(
-    input: UserEmail,
+    data: UserEmail,
     auth_service: AuthServiceDep,
     token_store: AuthRedisRepositoryDep,
 ):
     """Resend verification token"""
     await auth_service.resend_verification_token(
-        email=input.email,
+        email=data.email,
         token_store=token_store,
     )
     return {
@@ -282,17 +282,17 @@ async def resend_verification(
     response_model=MessageResponse,
 )
 async def forgot_password(
-    input: UserEmail,
+    data: UserEmail,
     auth_service: AuthServiceDep,
     token_store: AuthRedisRepositoryDep,
 ):
     """Forgot password"""
     await auth_service.forgot_password(
-        email=input.email,
+        email=data.email,
         token_store=token_store,
     )
     return {
-        "message": f"If an account with {input.email} exists, a reset link has been sent."
+        "message": f"If an account with {data.email} exists, a reset link has been sent."
     }
 
 
@@ -303,12 +303,14 @@ async def forgot_password(
 )
 async def reset_password(
     token: str,
-    input: UserPassword,
+    data: UserPassword,
     auth_service: AuthServiceDep,
     token_store: AuthRedisRepositoryDep,
 ):
     """Reset password"""
     await auth_service.reset_password(
-        token=token, password=input.password, token_store=token_store
+        token=token,
+        password=data.password,
+        token_store=token_store,
     )
     return {"message": "Password reset successful."}
