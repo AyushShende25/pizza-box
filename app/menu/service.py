@@ -157,7 +157,11 @@ class PizzaService:
                 message=f"Pizza with name '{data.name}' already exists",
             )
 
-        pizza = Pizza(**data.model_dump(exclude={"default_topping_ids"}, mode="json"))
+        pizza = Pizza(
+            **data.model_dump(
+                exclude={"default_topping_ids"},
+            )
+        )
 
         # Attach toppings if provided
         if data.default_topping_ids:
@@ -171,7 +175,7 @@ class PizzaService:
     async def update(self, pizza_id: UUID, data: PizzaUpdate) -> Pizza | None:
         pizza = await self.get_one(pizza_id=pizza_id, load_toppings=True)
 
-        update_data = data.model_dump(exclude_unset=True, mode="json")
+        update_data = data.model_dump(exclude_unset=True)
 
         # check for duplicate name, if name is provided and changed from previous
         if "name" in update_data and update_data["name"] != pizza.name:
@@ -270,7 +274,7 @@ class ToppingService:
                 message=f"Topping with name {data.name} already exists",
             )
 
-        topping = Topping(**data.model_dump(mode="json"))
+        topping = Topping(**data.model_dump())
 
         self.session.add(topping)
         await self.session.commit()
@@ -293,7 +297,7 @@ class ToppingService:
     async def update(self, topping_id: UUID, data: ToppingUpdate) -> Topping:
         topping = await self.get_one(topping_id)
 
-        update_data = data.model_dump(exclude_unset=True, mode="json")
+        update_data = data.model_dump(exclude_unset=True)
 
         # check for duplicate name, if provided and changed
         if "name" in update_data and update_data["name"] != topping.name:

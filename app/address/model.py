@@ -1,16 +1,18 @@
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import (
-    String,
-    Uuid,
-    TIMESTAMP,
-    func,
-    ForeignKey,
-    Boolean,
-    Index,
-)
-from typing import TYPE_CHECKING
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    TIMESTAMP,
+    Boolean,
+    ForeignKey,
+    Index,
+    String,
+    Uuid,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.base import Base
 
 if TYPE_CHECKING:
@@ -25,22 +27,50 @@ class Address(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    full_name: Mapped[str] = mapped_column(String(length=100), nullable=False)
-    phone_number: Mapped[str] = mapped_column(String(50), nullable=False)
-    street: Mapped[str] = mapped_column(String(255), nullable=False)
-    city: Mapped[str] = mapped_column(String(100), nullable=False)
-    state: Mapped[str] = mapped_column(String(100), nullable=False)
-    postal_code: Mapped[str] = mapped_column(String(20), nullable=False)
-    country: Mapped[str] = mapped_column(String(100), nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    full_name: Mapped[str] = mapped_column(
+        String(length=100),
+        nullable=False,
+    )
+    phone_number: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+    street: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    city: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    state: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    postal_code: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )
+    country: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
 
     user: Mapped["User"] = relationship(back_populates="addresses")
 
     created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), server_default=func.now(), nullable=False
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
@@ -53,7 +83,7 @@ class Address(Base):
             "unique_default_address_per_user",
             "user_id",
             unique=True,
-            postgresql_where=(is_default == True),
+            postgresql_where=(is_default.is_(True)),
         ),
     )
 
