@@ -1,18 +1,21 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import asyncio
-from app.core.config import settings
+
+from app.address.routes import address_router
 from app.auth.routes import auth_router
+from app.cart.routes import cart_router
+from app.core.config import settings
 from app.core.exception_handlers import setup_exception_handlers
 from app.menu.routes import menu_router
-from app.uploads.routes import uploads_router
-from app.cart.routes import cart_router
-from app.address.routes import address_router
-from app.orders.routes import orders_router
-from app.payments.routes import payments_router
 from app.notifications.events import start_event_listener
 from app.notifications.routes import notifications_router
+from app.orders.routes import orders_router
+from app.payments.routes import payments_router
+from app.store_config.routes import store_config_router
+from app.uploads.routes import uploads_router
 from app.utils.logger import logger
 
 
@@ -54,3 +57,4 @@ app.include_router(address_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(orders_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(payments_router, prefix=f"{settings.API_V1_STR}")
 app.include_router(notifications_router, prefix=f"{settings.API_V1_STR}")
+app.include_router(store_config_router, prefix=f"{settings.API_V1_STR}")
