@@ -21,6 +21,7 @@ class StoreConfigBase(BaseSchema):
 class StoreConfigResponse(StoreConfigBase):
     id: UUID
     base_delivery_fee: Decimal
+    tax_rate: Decimal
     per_km_fee: Decimal
     created_at: datetime
     updated_at: datetime
@@ -69,6 +70,11 @@ class StoreConfigUpdate(BaseSchema):
         default=None,
         ge=0,
         decimal_places=2,
+    )
+    tax_rate: Decimal | None = Field(
+        default=None,
+        ge=0,
+        decimal_places=4,
     )
     per_km_fee: Decimal | None = Field(
         default=None,

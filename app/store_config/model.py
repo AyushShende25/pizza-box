@@ -28,6 +28,10 @@ class StoreConfig(Base):
             name="ck_per_km_fee_positive",
         ),
         CheckConstraint(
+            "tax_rate >= 0",
+            name="ck_tax_rate_positive",
+        ),
+        CheckConstraint(
             "latitude >= -90 AND latitude <= 90",
             name="ck_latitude_range",
         ),
@@ -86,6 +90,11 @@ class StoreConfig(Base):
         DECIMAL(10, 2),
         nullable=False,
         default=Decimal("5.00"),
+    )
+    tax_rate: Mapped[Decimal] = mapped_column(
+        DECIMAL(5, 4),
+        nullable=False,
+        default=Decimal("0.18"),
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
