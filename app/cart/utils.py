@@ -1,23 +1,23 @@
-from fastapi import Request, Response
 from uuid import UUID
-from app.cart.constants import CART_COOKIE_NAME, CART_COOKIE_MAX_AGE
+
+from fastapi import Response
+
+from app.cart.constants import CART_COOKIE_MAX_AGE, CART_COOKIE_NAME
 from app.core.config import settings
 
 
-def get_cart_id_from_cookie(request: Request) -> UUID | None:
-    """Extract cart_id from signed cookie"""
-    cart_id_str = request.cookies.get(CART_COOKIE_NAME)
-    if not cart_id_str:
+def get_cart_id_from_cookie(cookie: str | None) -> UUID | None:
+    """Extract cart ID from cookie."""
+    if not cookie:
         return None
     try:
-        return UUID(cart_id_str)
+        return UUID(cookie)
     except ValueError:
         return None
-    return None
 
 
 def set_cart_cookie(response: Response, cart_id: UUID):
-    """Set signed cart_id cookie"""
+    """Set cart_id cookie"""
     response.set_cookie(
         key=CART_COOKIE_NAME,
         value=str(cart_id),

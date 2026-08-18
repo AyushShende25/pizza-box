@@ -1,24 +1,35 @@
-from fastapi import Depends, Request, Response
 from typing import Annotated
-from app.core.database import SessionDep
+
+from fastapi import Cookie, Depends, Response
+
 from app.auth.dependencies import OptionalUserDep
-from app.cart.service import CartService
-from app.cart.utils import get_cart_id_from_cookie, set_cart_cookie
-from app.cart.model import Cart
+from app.core.database import SessionDep
+
+from .constants import CART_COOKIE_NAME
+from .model import Cart
+from .service import CartService
+from .utils import get_cart_id_from_cookie, set_cart_cookie
+
+
+def get_cart_service(session: SessionDep) -> CartService:
+    """Provides a fresh CartService instance"""
+    return CartService(session)
+
+
+CartServiceDep = Annotated[CartService, Depends(get_cart_service)]
 
 
 async def get_or_create_cart(
-    request: Request,
     response: Response,
-    session: SessionDep,
+    cart_service: CartServiceDep,
     current_user: OptionalUserDep,
+    cart_id_cookie: Annotated[str | None, Cookie(alias=CART_COOKIE_NAME)] = None,
 ):
-    service = CartService(session)
     if current_user:
-        return await service.get_or_create_user_cart(user_id=current_user.id)
+        return await cart_service.get_or_create_user_cart(user_id=current_user.id)
 
-    cart_id = get_cart_id_from_cookie(request)
-    cart = await service.get_or_create_guest_cart(cart_id)
+    cart_id = get_cart_id_from_cookie(cookie=cart_id_cookie)
+    cart = await cart_service.get_or_create_guest_cart(cart_id=cart_id)
 
     # set newly-created cart-cookie
     if not cart_id or str(cart_id) != str(cart.id):

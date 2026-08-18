@@ -1,4 +1,3 @@
-import asyncio
 from decimal import Decimal
 from uuid import UUID
 
@@ -6,12 +5,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.cart.constants import DELIVERY_CHARGE, TAX_RATE
 from app.cart.model import Cart, CartItem
 from app.cart.schema import CartItemCreate, CartItemUpdate
-from app.core.exceptions import EntityNotFoundError
+from app.core.exceptions import BadRequestError, EntityNotFoundError
 from app.menu.model import Pizza, Topping
 from app.menu.service import CrustService, PizzaService, SizeService
+from app.store_config.service import StoreConfigService
 
 CART_ITEM_OPTIONS = (
     selectinload(CartItem.pizza).selectinload(Pizza.default_toppings),
@@ -28,79 +27,118 @@ class CartService:
     ):
         self.session = session
 
-    async def _load_cart(self, cart_id: UUID):
+    async def _load_cart(
+        self,
+        cart_id: UUID,
+    ) -> Cart:
         """Always return a fully loaded cart with all relationships"""
-        return await self.session.scalar(
+        stmt = (
             select(Cart)
             .where(Cart.id == cart_id)
             .options(selectinload(Cart.cart_items).options(*CART_ITEM_OPTIONS))
         )
 
-    async def get_guest_cart(self, guest_cart_id: UUID) -> Cart | None:
+        result = await self.session.execute(stmt)
+        cart = result.scalar_one_or_none()
+
+        if cart is None:
+            raise EntityNotFoundError(
+                error_code="CART_NOT_FOUND",
+                message="Cart does not exist",
+            )
+
+        return cart
+
+    async def get_guest_cart(
+        self,
+        guest_cart_id: UUID,
+    ) -> Cart | None:
         """Get guest cart"""
-        return await self.session.scalar(
+        stmt = (
             select(Cart)
             .where(Cart.id == guest_cart_id, Cart.user_id.is_(None))
             .options(selectinload(Cart.cart_items).options(*CART_ITEM_OPTIONS))
         )
 
-    async def get_or_create_guest_cart(self, cart_id: UUID | None = None) -> Cart:
+        result = await self.session.execute(stmt)
+
+        return result.scalar_one_or_none()
+
+    async def get_or_create_guest_cart(
+        self,
+        cart_id: UUID | None = None,
+    ) -> Cart:
         """Get existing guest cart or create a new one"""
         if cart_id:
-            cart = await self.get_guest_cart(cart_id)
+            cart = await self.get_guest_cart(guest_cart_id=cart_id)
             if cart:
                 return cart
+
         cart = Cart(user_id=None)
+
         self.session.add(cart)
         await self.session.commit()
-        return await self._load_cart(cart.id)
+
+        return await self._load_cart(cart_id=cart.id)
 
     async def get_user_cart(self, user_id: UUID) -> Cart | None:
         """Get user's persistent cart"""
-        return await self.session.scalar(
+        stmt = (
             select(Cart)
             .where(Cart.user_id == user_id)
             .options(selectinload(Cart.cart_items).options(*CART_ITEM_OPTIONS))
         )
+
+        result = await self.session.execute(stmt)
+
+        return result.scalar_one_or_none()
 
     async def get_or_create_user_cart(self, user_id: UUID) -> Cart:
         """Get existing user cart or create a new one"""
         cart = await self.get_user_cart(user_id)
         if cart:
             return cart
+
         cart = Cart(user_id=user_id)
+
         self.session.add(cart)
         await self.session.commit()
-        return await self._load_cart(cart.id)
+
+        return await self._load_cart(cart_id=cart.id)
 
     async def merge_guest_cart_to_user(
-        self, guest_cart_id: UUID, user_id: UUID
+        self,
+        guest_cart_id: UUID,
+        user_id: UUID,
     ) -> Cart:
         """Merge guest cart into user cart when user logs in"""
         # Get guest cart (which has the given cart-id and user-id is null)
-        guest_cart = await self.get_guest_cart(guest_cart_id)
+        guest_cart = await self.get_guest_cart(guest_cart_id=guest_cart_id)
 
         if not guest_cart:
             # No guest cart exists, just return or create user cart
-            return await self.get_or_create_user_cart(user_id)
+            return await self.get_or_create_user_cart(user_id=user_id)
 
         # Guest-cart exists, check for user-cart
-        user_cart = await self.get_user_cart(user_id)
+        user_cart = await self.get_user_cart(user_id=user_id)
 
         if not user_cart:
             # No existing user cart, just assign guest cart to user
             guest_cart.user_id = user_id
             await self.session.commit()
-            return await self._load_cart(guest_cart.id)
+            return await self._load_cart(cart_id=guest_cart.id)
 
         # Both guest-cart and user-cart exists, Loop over guest-cart-items and merge them (if already exists) or insert them into user cart
         for guest_item in guest_cart.cart_items:
-            existing_item = await self._find_matching_cart_item(user_cart, guest_item)
+            existing_item = await self._find_matching_cart_item(
+                cart=user_cart,
+                item=guest_item,
+            )
 
             if existing_item:
                 # Increment quantity
                 existing_item.quantity += guest_item.quantity
-                existing_item.total = self._calculate_item_total(existing_item)
+                existing_item.total = self._calculate_item_total(item=existing_item)
             else:
                 # Copy guest item to user cart
                 new_item = CartItem(
@@ -112,16 +150,22 @@ class CartService:
                     total=guest_item.total,
                     toppings=guest_item.toppings,
                 )
+
                 self.session.add(new_item)
 
         # Delete guest cart - cascade will handle guest_cart_items automatically!
         await self.session.delete(guest_cart)
-        await self._recalculate_cart_totals(user_cart)
+
+        await self._recalculate_cart_totals(cart=user_cart)
+
         await self.session.commit()
-        return await self._load_cart(user_cart.id)
+
+        return await self._load_cart(cart_id=user_cart.id)
 
     async def _find_matching_cart_item(
-        self, cart: Cart, item: CartItem
+        self,
+        cart: Cart,
+        item: CartItem,
     ) -> CartItem | None:
         """Find cart item with same pizza configuration"""
         for cart_item in cart.cart_items:
@@ -130,38 +174,46 @@ class CartService:
                 and cart_item.size_id == item.size_id
                 and cart_item.crust_id == item.crust_id
             ):
-                cart_item_toppings = set(t.id for t in cart_item.toppings)
-                item_toppings = set(t.id for t in item.toppings)
+                cart_item_toppings = {t.id for t in cart_item.toppings}
+
+                item_toppings = {t.id for t in item.toppings}
 
                 if cart_item_toppings == item_toppings:
                     return cart_item
-
         return None
 
-    async def add_item_to_cart(self, cart_id: UUID, item_data: CartItemCreate):
+    async def add_item_to_cart(self, cart_id: UUID, data: CartItemCreate):
         """Add item to cart"""
         cart = await self._load_cart(cart_id)
-        if not cart:
-            raise EntityNotFoundError(
-                error_code="CART_NOT_FOUND",
-                message="Cart does not exist",
+
+        pizza = await PizzaService(self.session).get_one(data.pizza_id)
+
+        size = await SizeService(self.session).get_one(data.size_id)
+
+        crust = await CrustService(self.session).get_one(data.crust_id)
+
+        if not pizza.is_available or not size.is_available or not crust.is_available:
+            raise BadRequestError(
+                error_code="ITEM_UNAVAILABLE",
+                message="One or more selected items are unavailable",
             )
 
-        pizza, size, crust = await asyncio.gather(
-            PizzaService(self.session).get_one(item_data.pizza_id),
-            SizeService(self.session).get_one(item_data.size_id),
-            CrustService(self.session).get_one(item_data.crust_id),
+        # Check if identical item already exists, if yes then simply increase the quantity and recalculate the totals
+        existing_item = await self._find_existing_item(
+            cart=cart,
+            data=data,
         )
 
-        # Check if identical item already exists, if yes then simply increase the quantity and recalculate the totals
-        existing_item = await self._find_existing_item(cart, item_data)
-
         if existing_item:
-            existing_item.quantity += item_data.quantity
-            existing_item.total = self._calculate_item_total(existing_item)
-            await self._recalculate_cart_totals(cart)
+            existing_item.quantity += data.quantity
+
+            existing_item.total = self._calculate_item_total(item=existing_item)
+
+            await self._recalculate_cart_totals(cart=cart)
+
             await self.session.commit()
-            return await self._load_cart(cart.id)
+
+            return await self._load_cart(cart_id=cart.id)
 
         # CartItem does not exist so create a new one
         cart_item = CartItem(
@@ -169,84 +221,118 @@ class CartService:
             pizza=pizza,
             size=size,
             crust=crust,
-            quantity=item_data.quantity,
+            quantity=data.quantity,
             total=Decimal(0),
         )
 
         # Add toppings if specified
-        if item_data.topping_ids:
-            toppings = list(
-                await self.session.scalars(
-                    select(Topping).where(Topping.id.in_(item_data.topping_ids))
-                )
-            )
-            if len(toppings) != len(item_data.topping_ids):
+        if data.topping_ids:
+            stmt = select(Topping).where(Topping.id.in_(data.topping_ids))
+
+            result = await self.session.execute(stmt)
+
+            toppings = list(result.scalars().all())
+
+            if len(toppings) != len(data.topping_ids):
                 raise EntityNotFoundError(
                     error_code="TOPPING_NOT_FOUND",
                     message="One or more topping not found",
                 )
+
+            if any(not topping.is_available for topping in toppings):
+                raise BadRequestError(
+                    error_code="TOPPING_UNAVAILABLE",
+                    message="One or more selected toppings are unavailable",
+                )
+
             cart_item.toppings = toppings
 
-        cart_item.total = self._calculate_item_total(cart_item)
+        cart_item.total = self._calculate_item_total(item=cart_item)
+
         self.session.add(cart_item)
-        await self._recalculate_cart_totals(cart)
+
+        await self._recalculate_cart_totals(cart=cart)
+
         await self.session.commit()
-        return await self._load_cart(cart.id)
+
+        return await self._load_cart(cart_id=cart.id)
 
     async def _find_existing_item(
-        self, cart: Cart, item_data: CartItemCreate
+        self,
+        cart: Cart,
+        data: CartItemCreate,
     ) -> CartItem | None:
         """Find existing cart item with same configuration"""
-        topping_ids = set(item_data.topping_ids or [])
+        topping_ids = set(data.topping_ids or [])
 
         for cart_item in cart.cart_items:
             if (
-                cart_item.pizza_id == item_data.pizza_id
-                and cart_item.crust_id == item_data.crust_id
-                and cart_item.size_id == item_data.size_id
+                cart_item.pizza_id == data.pizza_id
+                and cart_item.crust_id == data.crust_id
+                and cart_item.size_id == data.size_id
             ):
-                item_topping_ids = set(t.id for t in cart_item.toppings)
+                item_topping_ids = {t.id for t in cart_item.toppings}
+
                 if topping_ids == item_topping_ids:
                     return cart_item
         return None
 
     async def update_cart_item(
-        self, cart_item_id: UUID, update_data: CartItemUpdate
+        self,
+        cart_id: UUID,
+        cart_item_id: UUID,
+        data: CartItemUpdate,
     ) -> Cart:
         """Update cart item quantity"""
-        cart_item = await self.session.scalar(
+        result = await self.session.execute(
             select(CartItem)
-            .where(CartItem.id == cart_item_id)
+            .where(
+                CartItem.id == cart_item_id,
+                CartItem.cart_id == cart_id,
+            )
             .options(
                 selectinload(CartItem.cart)
                 .selectinload(Cart.cart_items)
                 .options(*CART_ITEM_OPTIONS)
             )
         )
+
+        cart_item = result.scalar_one_or_none()
+
         if not cart_item:
             raise EntityNotFoundError(
                 error_code="CART_ITEM_NOT_FOUND",
                 message="Cart item does not exist",
             )
 
-        cart_item.quantity = update_data.quantity
-        cart_item.total = self._calculate_item_total(cart_item)
+        cart_item.quantity = data.quantity
+
+        cart_item.total = self._calculate_item_total(item=cart_item)
 
         await self._recalculate_cart_totals(cart_item.cart)
-        await self.session.commit()
-        return await self._load_cart(cart_item.cart_id)
 
-    async def remove_cart_item(self, cart_item_id: UUID):
+        await self.session.commit()
+
+        return await self._load_cart(cart_id=cart_item.cart_id)
+
+    async def remove_cart_item(
+        self,
+        cart_id: UUID,
+        cart_item_id: UUID,
+    ):
         """Remove item from cart"""
-        cart_item = await self.session.scalar(
+        result = await self.session.execute(
             select(CartItem)
-            .where(CartItem.id == cart_item_id)
+            .where(CartItem.id == cart_item_id, CartItem.cart_id == cart_id)
             .options(
                 selectinload(CartItem.cart)
                 .selectinload(Cart.cart_items)
                 .options(*CART_ITEM_OPTIONS)
             )
         )
+
+        cart_item = result.scalar_one_or_none()
+
         if not cart_item:
             raise EntityNotFoundError(
                 error_code="CART_ITEM_NOT_FOUND",
@@ -254,13 +340,24 @@ class CartService:
             )
 
         await self.session.delete(cart_item)
-        await self._recalculate_cart_totals(cart_item.cart)
-        await self.session.commit()
-        return await self._load_cart(cart_item.cart_id)
 
-    async def clear_cart(self, cart_id: UUID):
+        await self._recalculate_cart_totals(cart=cart_item.cart)
+
+        await self.session.commit()
+
+        return await self._load_cart(cart_id=cart_item.cart_id)
+
+    async def clear_cart(
+        self,
+        cart_id: UUID,
+    ):
         """Clear all items from cart"""
-        cart = await self.session.get(Cart, cart_id)
+        stmt = select(Cart).where(Cart.id == cart_id)
+
+        result = await self.session.execute(stmt)
+
+        cart = result.scalar_one_or_none()
+
         if not cart:
             raise EntityNotFoundError(
                 error_code="CART_NOT_FOUND",
@@ -275,25 +372,45 @@ class CartService:
         cart.total = Decimal(0)
 
         await self.session.commit()
-        return await self._load_cart(cart_id)
 
-    def _calculate_item_total(self, item: CartItem) -> Decimal:
-        base_price = Decimal(item.pizza.base_price)
-        crust_price = Decimal(item.crust.additional_price)
-        toppings_price = sum(Decimal(t.price) for t in item.toppings)
-        size_price = base_price * Decimal(item.size.multiplier)
-        return (size_price + crust_price + toppings_price) * item.quantity
+        return await self._load_cart(cart_id=cart_id)
 
-    async def _recalculate_cart_totals(self, cart: Cart):
+    def _calculate_item_total(
+        self,
+        item: CartItem,
+    ) -> Decimal:
+        base_price = item.pizza.base_price
+
+        crust_price = item.crust.price_modifier
+
+        size_price = item.size.price_modifier
+
+        toppings_price = sum(
+            (t.price_modifier for t in item.toppings),
+            Decimal("0.00"),
+        )
+
+        return (base_price + size_price + crust_price + toppings_price) * item.quantity
+
+    async def _recalculate_cart_totals(
+        self,
+        cart: Cart,
+    ) -> Cart:
         """Recalculate cart totals"""
+        store_config = await StoreConfigService(session=self.session).get()
+
         result = await self.session.execute(
             select(func.sum(CartItem.total)).where(CartItem.cart_id == cart.id)
         )
+
         subtotal = result.scalar() or Decimal(0)
-        cart.subtotal = Decimal(subtotal)
-        cart.tax = subtotal * Decimal(TAX_RATE)
-        cart.delivery_charge = (
-            Decimal(DELIVERY_CHARGE) if subtotal > Decimal(0) else Decimal(0)
-        )
-        cart.total = subtotal + cart.tax + cart.delivery_charge
+
+        cart.subtotal = subtotal
+
+        cart.tax = subtotal * store_config.tax_rate
+
+        cart.delivery_charge = store_config.base_delivery_fee
+
+        cart.total = cart.subtotal + cart.tax + cart.delivery_charge
+
         return cart

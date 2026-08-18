@@ -1,9 +1,11 @@
-from pydantic import Field, computed_field
-from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
-from app.menu.schema import PizzaResponse, CrustResponse, SizeResponse, ToppingResponse
+from uuid import UUID
+
+from pydantic import Field, computed_field
+
 from app.core.base_schema import BaseSchema
+from app.menu.schema import CrustResponse, PizzaResponse, SizeResponse, ToppingResponse
 
 
 class CartItemBase(BaseSchema):
@@ -14,7 +16,7 @@ class CartItemCreate(CartItemBase):
     pizza_id: UUID
     size_id: UUID
     crust_id: UUID
-    topping_ids: list[UUID] | None
+    topping_ids: list[UUID] | None = None
 
 
 class CartItemResponse(CartItemBase):
