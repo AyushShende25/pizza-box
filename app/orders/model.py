@@ -1,10 +1,12 @@
-import uuid
 import enum
-from sqlalchemy.orm import mapped_column, Mapped, relationship
-from sqlalchemy import Uuid, ForeignKey, TIMESTAMP, func, DECIMAL, Enum, Integer, String
+import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+from sqlalchemy import DECIMAL, TIMESTAMP, Enum, ForeignKey, Integer, String, Uuid, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.base import Base
 
 if TYPE_CHECKING:
@@ -34,13 +36,14 @@ class PaymentMethod(enum.Enum):
 
 class OrderItemTopping(Base):
     __tablename__ = "order_item_topping"
+
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
     )
     order_item_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("order_item.id", ondelete="CASCADE"),
+        ForeignKey("order_items.id", ondelete="CASCADE"),
         nullable=False,
     )
     order_item: Mapped["OrderItem"] = relationship(back_populates="toppings")
@@ -66,7 +69,7 @@ class OrderItemTopping(Base):
 
 
 class OrderItem(Base):
-    __tablename__ = "order_item"
+    __tablename__ = "order_items"
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -108,11 +111,11 @@ class OrderItem(Base):
         nullable=False,
     )
 
-    size_price: Mapped[Decimal] = mapped_column(
+    size_price_modifier: Mapped[Decimal] = mapped_column(
         DECIMAL(10, 2),
         nullable=False,
     )
-    crust_price: Mapped[Decimal] = mapped_column(
+    crust_price_modifier: Mapped[Decimal] = mapped_column(
         DECIMAL(10, 2),
         nullable=False,
     )
@@ -187,6 +190,7 @@ class Order(Base):
         nullable=False,
         default=OrderStatus.PENDING,
     )
+
     payment_status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus),
         nullable=False,
@@ -198,28 +202,55 @@ class Order(Base):
         default=PaymentMethod.COD,
     )
     payments: Mapped[list["Payment"]] = relationship(
-        "Payment",
         back_populates="order",
         cascade="all, delete-orphan",
     )
 
     order_items: Mapped[list["OrderItem"]] = relationship(
-        "OrderItem",
         back_populates="order",
         cascade="all, delete-orphan",
     )
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
     user: Mapped["User"] = relationship()
+    customer_name: Mapped[str] = mapped_column(
+        String(length=255),
+        nullable=False,
+    )
 
     address_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("addresses.id", ondelete="SET NULL"),
         nullable=True,
     )
-    delivery_address: Mapped[str] = mapped_column(
-        String(500),
+    delivery_name: Mapped[str] = mapped_column(
+        String(length=100),
+        nullable=False,
+    )
+    delivery_phone: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+    delivery_street: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+    delivery_city: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    delivery_state: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+    delivery_postal_code: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )
+    delivery_country: Mapped[str] = mapped_column(
+        String(100),
         nullable=False,
     )
 

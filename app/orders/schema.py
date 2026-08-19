@@ -1,9 +1,12 @@
-from pydantic import Field, computed_field
-from uuid import UUID
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
-from app.orders.model import OrderStatus, PaymentStatus, PaymentMethod
+from typing import Literal
+from uuid import UUID
+
+from pydantic import Field, computed_field
+
 from app.core.base_schema import BaseSchema
+from app.orders.model import OrderStatus, PaymentMethod, PaymentStatus
 
 
 class OrderItemToppingResponse(BaseSchema):
@@ -25,12 +28,12 @@ class OrderItemCreate(OrderItemBase):
 
 class OrderItemResponse(OrderItemBase):
     id: UUID
-    toppings: list[OrderItemToppingResponse] = []
+    toppings: list[OrderItemToppingResponse] = Field(default_factory=list)
     pizza_name: str
     size_name: str
     crust_name: str
-    size_price: Decimal
-    crust_price: Decimal
+    size_price_modifier: Decimal
+    crust_price_modifier: Decimal
     base_pizza_price: Decimal
     toppings_total_price: Decimal
     unit_price: Decimal
@@ -44,7 +47,6 @@ class OrderBase(BaseSchema):
 
 class OrderCreate(OrderBase):
     address_id: UUID
-    order_items: list[OrderItemCreate]
 
 
 class OrderUpdate(BaseSchema):
@@ -54,15 +56,22 @@ class OrderUpdate(BaseSchema):
 class OrderResponse(OrderBase):
     id: UUID
     order_no: str
-    order_items: list[OrderItemResponse] = []
+    order_items: list[OrderItemResponse] = Field(default_factory=list)
     user_id: UUID
+    customer_name: str
     order_status: OrderStatus
     payment_status: PaymentStatus
     subtotal: Decimal
     tax: Decimal
     delivery_charge: Decimal
     total: Decimal
-    delivery_address: str
+    delivery_name: str
+    delivery_phone: str
+    delivery_street: str
+    delivery_city: str
+    delivery_state: str
+    delivery_postal_code: str
+    delivery_country: str
     created_at: datetime
     updated_at: datetime
 
@@ -103,11 +112,21 @@ class UserOrderQueryParams(BaseOrderQueryParams):
     pass
 
 
+OrderSortField = Literal[
+    "created_at",
+    "order_no",
+    "total",
+]
+
+SortOrder = Literal["asc", "desc"]
+
+
 class AdminOrderQueryParams(BaseOrderQueryParams):
-    sort_by: str = Field(
-        default="created_at:desc",
-        description="Sort field and order (field:asc | desc) (e.g., 'created_at:asc' or 'created_at:desc')",
+    sort_by: OrderSortField = Field(
+        default="created_at",
+        description="Sort field (e.g., 'order_no')",
     )
+    sort_order: SortOrder = "desc"
 
 
 class OrderStatsQueryParams(BaseSchema):

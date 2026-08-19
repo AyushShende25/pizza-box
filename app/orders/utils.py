@@ -1,4 +1,5 @@
 import uuid
+
 from app.address.model import Address
 
 
