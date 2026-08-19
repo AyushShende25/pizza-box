@@ -22,6 +22,7 @@ class CartItemCreate(CartItemBase):
 class CartItemResponse(CartItemBase):
     id: UUID
     total: Decimal
+    unit_price: Decimal
     pizza: PizzaResponse
     size: SizeResponse
     crust: CrustResponse

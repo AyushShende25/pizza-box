@@ -138,7 +138,7 @@ class CartService:
             if existing_item:
                 # Increment quantity
                 existing_item.quantity += guest_item.quantity
-                existing_item.total = self._calculate_item_total(item=existing_item)
+                self._set_item_pricing(existing_item)
             else:
                 # Copy guest item to user cart
                 new_item = CartItem(
@@ -147,9 +147,9 @@ class CartService:
                     size_id=guest_item.size_id,
                     crust_id=guest_item.crust_id,
                     quantity=guest_item.quantity,
-                    total=guest_item.total,
                     toppings=guest_item.toppings,
                 )
+                self._set_item_pricing(new_item)
 
                 self.session.add(new_item)
 
@@ -206,8 +206,7 @@ class CartService:
 
         if existing_item:
             existing_item.quantity += data.quantity
-
-            existing_item.total = self._calculate_item_total(item=existing_item)
+            self._set_item_pricing(existing_item)
 
             await self._recalculate_cart_totals(cart=cart)
 
@@ -233,10 +232,10 @@ class CartService:
 
             toppings = list(result.scalars().all())
 
-            if len(toppings) != len(data.topping_ids):
-                raise EntityNotFoundError(
-                    error_code="TOPPING_NOT_FOUND",
-                    message="One or more topping not found",
+            if len(data.topping_ids) != len(set(data.topping_ids)):
+                raise BadRequestError(
+                    error_code="DUPLICATE_TOPPINGS",
+                    message="A topping cannot be selected more than once",
                 )
 
             if any(not topping.is_available for topping in toppings):
@@ -247,7 +246,7 @@ class CartService:
 
             cart_item.toppings = toppings
 
-        cart_item.total = self._calculate_item_total(item=cart_item)
+        self._set_item_pricing(cart_item)
 
         self.session.add(cart_item)
 
@@ -307,7 +306,7 @@ class CartService:
 
         cart_item.quantity = data.quantity
 
-        cart_item.total = self._calculate_item_total(item=cart_item)
+        self._set_item_pricing(cart_item)
 
         await self._recalculate_cart_totals(cart_item.cart)
 
@@ -375,22 +374,36 @@ class CartService:
 
         return await self._load_cart(cart_id=cart_id)
 
-    def _calculate_item_total(
+    def _calculate_item_unit_price(
         self,
         item: CartItem,
     ) -> Decimal:
-        base_price = item.pizza.base_price
-
-        crust_price = item.crust.price_modifier
-
-        size_price = item.size.price_modifier
-
         toppings_price = sum(
             (t.price_modifier for t in item.toppings),
             Decimal("0.00"),
         )
 
-        return (base_price + size_price + crust_price + toppings_price) * item.quantity
+        return (
+            item.pizza.base_price
+            + item.size.price_modifier
+            + item.crust.price_modifier
+            + toppings_price
+        )
+
+    def _set_item_pricing(self, item: CartItem) -> None:
+        item.toppings_total_price = sum(
+            (t.price_modifier for t in item.toppings),
+            Decimal("0.00"),
+        )
+
+        item.unit_price = (
+            item.pizza.base_price
+            + item.size.price_modifier
+            + item.crust.price_modifier
+            + item.toppings_total_price
+        )
+
+        item.total = item.unit_price * item.quantity
 
     async def _recalculate_cart_totals(
         self,
@@ -407,9 +420,13 @@ class CartService:
 
         cart.subtotal = subtotal
 
-        cart.tax = subtotal * store_config.tax_rate
+        cart.tax = (subtotal * store_config.tax_rate).quantize(Decimal("0.01"))
 
-        cart.delivery_charge = store_config.base_delivery_fee
+        cart.delivery_charge = (
+            store_config.base_delivery_fee
+            if subtotal > Decimal("0.00")
+            else Decimal("0.00")
+        )
 
         cart.total = cart.subtotal + cart.tax + cart.delivery_charge
 

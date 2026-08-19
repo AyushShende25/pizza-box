@@ -48,6 +48,10 @@ class CartItem(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
+    unit_price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2),
+        nullable=False,
+    )
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -80,6 +84,11 @@ class CartItem(Base):
     toppings: Mapped[list["Topping"]] = relationship(
         secondary=cart_item_topping,
         back_populates="cart_items",
+    )
+    toppings_total_price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2),
+        nullable=False,
+        default=Decimal("0.00"),
     )
 
     created_at: Mapped[datetime] = mapped_column(
