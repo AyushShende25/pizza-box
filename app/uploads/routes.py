@@ -1,49 +1,35 @@
-from fastapi import APIRouter
-from pydantic import field_validator
 import uuid
-import enum
-from app.libs.bucket import client
+
+from boto3.exceptions import Boto3Error
+from fastapi import APIRouter
+
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.core.base_schema import BaseSchema
+from app.libs.s3 import s3_client
+from app.utils.logger import logger
+
+from .schema import ContentType, PresignedUploadResponse, UploadRequest
 
 uploads_router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
 
-class EntityType(str, enum.Enum):
-    PIZZA = "pizza"
-    TOPPING = "topping"
-    USER = "user"
-
-
-class UploadRequest(BaseSchema):
-    entity_type: EntityType
-    content_type: str
-
-    @field_validator("content_type")
-    @classmethod
-    def validate_content_type(cls, v):
-        allowed_types = ["image/jpeg", "image/png", "image/webp"]
-        if v not in allowed_types:
-            raise ValueError(f"Content type must be one of {allowed_types}")
-        return v
-
-
-ext_map = {
+EXTENSION_BY_CONTENT_TYPE: dict[ContentType, str] = {
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
 }
 
 
-@uploads_router.post("/presigned-url")
+@uploads_router.post("/presigned-url", response_model=PresignedUploadResponse)
 async def create_upload_url(body: UploadRequest):
-    try:
-        file_id = str(uuid.uuid4())
-        ext = ext_map[body.content_type]
-        key = f"{body.entity_type.value}/{file_id}.{ext}"
+    file_id = str(uuid.uuid4())
 
-        signed_url = client.generate_presigned_url(
+    extension = EXTENSION_BY_CONTENT_TYPE[body.content_type]
+
+    key = f"{body.entity_type.value}/{file_id}.{extension}"
+
+    try:
+        upload_url = s3_client.generate_presigned_url(
             ClientMethod="put_object",
             Params={
                 "Bucket": settings.BUCKET_NAME,
@@ -52,9 +38,15 @@ async def create_upload_url(body: UploadRequest):
             },
             ExpiresIn=5 * 60,
         )
+    except Boto3Error:
+        logger.exception("Failed to generate S3 presigned URL")
+        raise AppException(
+            error_code="UPLOAD_URL_GENERATION_FAILED",
+            message="Failed to generate upload URL",
+        )
 
-        file_url = f"{settings.BUCKET_CUSTOM_DOMAIN}/{key}"
-
-        return {"uploadUrl": signed_url, "fileUrl": file_url}
-    except Exception as e:
-        raise AppException(message="Failed to generate upload URL")
+    return PresignedUploadResponse(
+        upload_url=upload_url,
+        file_url=f"{settings.BUCKET_CUSTOM_DOMAIN}/{key}",
+        key=key,
+    )
