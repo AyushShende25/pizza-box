@@ -94,7 +94,11 @@ class OrderService:
             user_id=user.id,
         )
 
-        payment_method = getattr(data, "payment_method", PaymentMethod.DIGITAL)
+        order_status = (
+            OrderStatus.CONFIRMED
+            if data.payment_method == PaymentMethod.COD
+            else OrderStatus.PENDING
+        )
 
         order = Order(
             order_no=generate_order_num(),
@@ -102,7 +106,7 @@ class OrderService:
             customer_name=f"{user.first_name} {user.last_name}",
             address_id=data.address_id,
             notes=data.notes,
-            payment_method=payment_method,
+            payment_method=data.payment_method,
             delivery_name=address.full_name,
             delivery_phone=address.phone_number,
             delivery_street=address.street,
@@ -114,6 +118,7 @@ class OrderService:
             tax=cart.tax,
             delivery_charge=cart.delivery_charge,
             total=cart.total,
+            order_status=order_status,
         )
 
         for cart_item in cart.cart_items:

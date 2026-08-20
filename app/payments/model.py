@@ -1,19 +1,21 @@
-from sqlalchemy.orm import mapped_column, Mapped, relationship
-from sqlalchemy import Uuid, TIMESTAMP, func, Enum, String, ForeignKey, DECIMAL, JSON
+import enum
+import uuid
 from datetime import datetime
 from decimal import Decimal
-import uuid
-import enum
+
+from sqlalchemy import DECIMAL, JSON, TIMESTAMP, Enum, ForeignKey, String, Uuid, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.auth.model import User
 from app.core.base import Base
 from app.orders.model import Order
-from app.auth.model import User
 
 
-class PaymentProvider(enum.Enum):
+class PaymentProvider(str, enum.Enum):
     RAZORPAY = "razorpay"
 
 
-class PaymentTransactionStatus(enum.Enum):
+class PaymentTransactionStatus(str, enum.Enum):
     INITIATED = "initiated"  # Payment created in Razorpay
     PENDING = "pending"  # Awaiting user action
     SUCCESS = "success"  # Payment successful
@@ -38,6 +40,12 @@ class Payment(Base):
         "Order",
         back_populates="payments",
     )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user: Mapped["User"] = relationship()
 
     provider: Mapped[PaymentProvider] = mapped_column(
         Enum(PaymentProvider),
@@ -72,12 +80,6 @@ class Payment(Base):
         nullable=False,
         default="INR",
     )
-
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    user: Mapped["User"] = relationship()
 
     meta_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)

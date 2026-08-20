@@ -1,51 +1,79 @@
-import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
+from uuid import UUID
 
+import razorpay
 from razorpay.errors import SignatureVerificationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import AppException, EntityNotFoundError
-from app.libs.razorpay import razorpay_client
+from app.core.exceptions import AppException, BadRequestError, EntityNotFoundError
 from app.notifications.events import publish_payment_event
 from app.notifications.schema import PaymentEventData
-from app.orders.model import Order, OrderStatus, PaymentStatus
-from app.payments.model import Payment, PaymentProvider, PaymentTransactionStatus
+from app.orders.model import Order, OrderStatus, PaymentMethod, PaymentStatus
 from app.utils.logger import logger
+
+from .model import Payment, PaymentProvider, PaymentTransactionStatus
 
 
 class PaymentService:
     def __init__(
         self,
         session: AsyncSession,
+        razorpay_client: razorpay.Client,
     ):
         self.session = session
         self.razorpay_client = razorpay_client
 
-    async def create_razorpay_order(self, order_id: uuid.UUID):
-        order = await self.session.scalar(select(Order).where(Order.id == order_id))
+    async def create_razorpay_order(self, order_id: UUID) -> Payment:
+        result = await self.session.execute(select(Order).where(Order.id == order_id))
+
+        order = result.scalar_one_or_none()
+
         if not order:
             raise EntityNotFoundError(
                 error_code="ORDER_NOT_FOUND",
                 message="Order with that id does not exist",
             )
 
-        amount_in_paise = int(order.total * 100)
-        try:
-            razorpay_order = self.razorpay_client.order.create(
-                data={
-                    "amount": amount_in_paise,
-                    "currency": "INR",
-                    "receipt": order.order_no,
-                    "notes": {
-                        "order_id": str(order.id),
-                        "order_no": order.order_no,
-                    },
-                }
+        if order.payment_method != PaymentMethod.DIGITAL:
+            raise BadRequestError(
+                error_code="INVALID_PAYMENT_METHOD",
+                message="Razorpay payment is only available for digital orders",
             )
-        except Exception as e:
+
+        if order.order_status == OrderStatus.CANCELLED:
+            raise BadRequestError(
+                error_code="ORDER_CANCELLED",
+                message="Cannot create payment for a cancelled order",
+            )
+
+        if order.payment_status == PaymentStatus.PAID:
+            raise BadRequestError(
+                error_code="ORDER_ALREADY_PAID",
+                message="Order is already paid",
+            )
+
+        amount_in_paise = int(order.total * 100)
+
+        payload = {
+            "amount": amount_in_paise,
+            "currency": "INR",
+            "receipt": order.order_no,
+            "notes": {
+                "order_id": str(order.id),
+                "order_no": order.order_no,
+            },
+        }
+
+        try:
+            razorpay_order = self.razorpay_client.order.create(data=payload)
+        except razorpay.errors.RazorpayError as exc:
+            logger.exception(f"Razorpay order creation failed: {exc}")
             raise AppException(
-                error_code="PAYMENT_CREATION_FAILED",
-                message=f"Razorpay order creation failed: {e!s}",
+                error_code="PAYMENT_GATEWAY_ERROR",
+                message="Failed to initiate transaction with payment provider",
             )
 
         payment = Payment(
@@ -65,16 +93,50 @@ class PaymentService:
 
         return payment
 
+    async def _publish_payment_event_safely(
+        self,
+        event_type: str,
+        user_id: UUID | None,
+        order_num: str,
+        amount: Decimal,
+        status: PaymentTransactionStatus,
+        provider: PaymentProvider,
+        reason: str | None = None,
+    ) -> None:
+        if not user_id:
+            logger.warning("Skipping event publishing: no user_id present")
+            return
+
+        try:
+            await publish_payment_event(
+                event_type=event_type,
+                data=PaymentEventData(
+                    user_id=user_id,
+                    order_num=order_num,
+                    amount=amount,
+                    payment_status=status,
+                    provider=provider,
+                    reason=reason,
+                ),
+            )
+        except Exception:
+            logger.exception(f"Failed to publish payment event {event_type}")
+
     async def verify_payment(
         self,
-        payment_id: uuid.UUID,
+        payment_id: UUID,
         razorpay_order_id: str,
         razorpay_payment_id: str,
         razorpay_signature: str,
-    ):
-        payment = await self.session.scalar(
-            select(Payment).where(Payment.id == payment_id)
+    ) -> Payment:
+        result = await self.session.execute(
+            select(Payment)
+            .options(selectinload(Payment.order))
+            .where(Payment.id == payment_id)
+            .with_for_update()
         )
+        payment = result.scalar_one_or_none()
+
         if not payment:
             raise EntityNotFoundError(
                 error_code="PAYMENT_NOT_FOUND",
@@ -83,6 +145,32 @@ class PaymentService:
 
         if payment.status == PaymentTransactionStatus.SUCCESS:
             return payment
+
+        order = payment.order
+
+        if not order:
+            raise EntityNotFoundError(
+                error_code="ORDER_NOT_FOUND",
+                message="Associated order does not exist",
+            )
+
+        if order.payment_method != PaymentMethod.DIGITAL:
+            raise BadRequestError(
+                error_code="INVALID_PAYMENT_METHOD",
+                message="This order does not use digital payment",
+            )
+
+        if order.payment_status == PaymentStatus.PAID:
+            raise AppException(
+                error_code="ORDER_ALREADY_PAID",
+                message="Order has already been paid",
+            )
+
+        if payment.razorpay_order_id != razorpay_order_id:
+            raise AppException(
+                error_code="PAYMENT_ORDER_MISMATCH",
+                message="Razorpay order does not match payment record",
+            )
 
         try:
             self.razorpay_client.utility.verify_payment_signature({
@@ -93,96 +181,49 @@ class PaymentService:
         except SignatureVerificationError:
             payment.status = PaymentTransactionStatus.FAILED
             payment.error_message = "Invalid payment signature"
+            order.payment_status = PaymentStatus.FAILED
             await self.session.commit()
 
-            # This is very unlikely to happen, added just for type-check satisfaction
-            if not payment.user_id:
-                logger.warning(
-                    f"Skipping notification for payment {payment.id} — no user_id"
-                )
-                return payment
-            await publish_payment_event(
+            await self._publish_payment_event_safely(
                 event_type="payment_failed",
-                data=PaymentEventData(
-                    user_id=payment.user_id,
-                    order_num=payment.order.order_no,
-                    payment_status=payment.status,
-                    provider=payment.provider,
-                    amount=payment.amount,
-                    reason="Invalid payment signature",
-                ),
+                user_id=payment.user_id,
+                order_num=order.order_no,
+                amount=payment.amount,
+                status=payment.status,
+                provider=payment.provider,
+                reason=payment.error_message,
             )
-
             return payment
-        except Exception as e:
-            payment.status = PaymentTransactionStatus.FAILED
-            payment.error_message = f"Verification error: {e!s}"
-            await self.session.commit()
-
-            # This is very unlikely to happen, added just type-check satisfaction
-            if not payment.user_id:
-                logger.warning(
-                    f"Skipping notification for payment {payment.id} — no user_id"
-                )
-                return payment
-            await publish_payment_event(
-                event_type="payment_failed",
-                data=PaymentEventData(
-                    user_id=payment.user_id,
-                    order_num=payment.order.order_no,
-                    payment_status=payment.status,
-                    provider=payment.provider,
-                    amount=payment.amount,
-                    reason=str(e),
-                ),
-            )
-
-            raise AppException(
-                error_code="PAYMENT_CREATION_FAILED",
-                message=f"Payment verification failed: {e!s}",
-            )
 
         payment.razorpay_payment_id = razorpay_payment_id
         payment.razorpay_signature = razorpay_signature
         payment.status = PaymentTransactionStatus.SUCCESS
-        payment.completed_at = func.now()
+        payment.completed_at = datetime.now(UTC)
+
         try:
             razorpay_payment_data = self.razorpay_client.payment.fetch(
                 razorpay_payment_id
             )
             payment.meta_data = razorpay_payment_data
         except Exception:
-            pass
-
-        order = await self.session.scalar(
-            select(Order).where(Order.id == payment.order_id)
-        )
-        if not order:
-            raise EntityNotFoundError(
-                error_code="ORDER_NOT_FOUND",
-                message="Order with that id does not exist",
+            logger.warning(
+                f"Failed to fetch Razorpay payment details for payment_id={payment.id}",
+                exc_info=True,
             )
+
         order.payment_status = PaymentStatus.PAID
         order.order_status = OrderStatus.CONFIRMED
 
         await self.session.commit()
         await self.session.refresh(payment)
 
-        # This is very unlikely to happen, added just type-check satisfaction
-        if not payment.user_id:
-            logger.warning(
-                f"Skipping notification for payment {payment.id} — no user_id"
-            )
-            return payment
-        await publish_payment_event(
+        await self._publish_payment_event_safely(
             event_type="payment_successful",
-            data=PaymentEventData(
-                user_id=payment.user_id,
-                order_num=payment.order.order_no,
-                amount=payment.amount,
-                payment_status=payment.status,
-                provider=payment.provider,
-            ),
+            user_id=payment.user_id,
+            order_num=order.order_no,
+            amount=payment.amount,
+            status=payment.status,
+            provider=payment.provider,
         )
 
         return payment
