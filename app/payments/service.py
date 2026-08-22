@@ -9,10 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppException, BadRequestError, EntityNotFoundError
-from app.notifications.events import publish_payment_event
-from app.notifications.schema import PaymentEventData
+from app.notifications.dispatcher import notification_dispatcher
+from app.notifications.model import NotificationPriority, NotificationType
 from app.orders.model import Order, OrderStatus, PaymentMethod, PaymentStatus
 from app.utils.logger import logger
+from app.utils.templates.email_templates import (
+    payment_failed_email_html,
+    payment_successful_email_html,
+)
+from app.workers.email_tasks import send_mail_task
 
 from .model import Payment, PaymentProvider, PaymentTransactionStatus
 
@@ -93,14 +98,13 @@ class PaymentService:
 
         return payment
 
-    async def _publish_payment_event_safely(
+    async def _notify_payment_safely(
         self,
-        event_type: str,
+        title: str,
+        message: str,
         user_id: UUID | None,
         order_num: str,
         amount: Decimal,
-        status: PaymentTransactionStatus,
-        provider: PaymentProvider,
         reason: str | None = None,
     ) -> None:
         if not user_id:
@@ -108,19 +112,20 @@ class PaymentService:
             return
 
         try:
-            await publish_payment_event(
-                event_type=event_type,
-                data=PaymentEventData(
-                    user_id=user_id,
-                    order_num=order_num,
-                    amount=amount,
-                    payment_status=status,
-                    provider=provider,
-                    reason=reason,
-                ),
+            await notification_dispatcher.notify_user(
+                user_id=user_id,
+                notification_type=NotificationType.PAYMENT_UPDATE,
+                priority=NotificationPriority.MEDIUM,
+                title=title,
+                message=message,
+                payload={
+                    "order_num": order_num,
+                    "amount": amount,
+                    "reason": reason,
+                },
             )
         except Exception:
-            logger.exception(f"Failed to publish payment event {event_type}")
+            logger.exception("Failed to dispatch payment notification")
 
     async def verify_payment(
         self,
@@ -131,7 +136,10 @@ class PaymentService:
     ) -> Payment:
         result = await self.session.execute(
             select(Payment)
-            .options(selectinload(Payment.order))
+            .options(
+                selectinload(Payment.order),
+                selectinload(Payment.user),
+            )
             .where(Payment.id == payment_id)
             .with_for_update()
         )
@@ -182,34 +190,69 @@ class PaymentService:
             payment.status = PaymentTransactionStatus.FAILED
             payment.error_message = "Invalid payment signature"
             order.payment_status = PaymentStatus.FAILED
+
             await self.session.commit()
 
-            await self._publish_payment_event_safely(
-                event_type="payment_failed",
+            await self._notify_payment_safely(
+                title="Payment Failed",
+                message=f"Payment for order #{order.order_no} failed. Please try again.",
                 user_id=payment.user_id,
                 order_num=order.order_no,
                 amount=payment.amount,
-                status=payment.status,
-                provider=payment.provider,
                 reason=payment.error_message,
             )
-            return payment
 
-        payment.razorpay_payment_id = razorpay_payment_id
-        payment.razorpay_signature = razorpay_signature
-        payment.status = PaymentTransactionStatus.SUCCESS
-        payment.completed_at = datetime.now(UTC)
+            if payment.user:
+                try:
+                    send_mail_task.delay(
+                        recipients=[payment.user.email],
+                        subject=f"Payment for #{order.order_no} failed",
+                        body=payment_failed_email_html(
+                            user=payment.user,
+                            order=order,
+                        ),
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to enqueue payment failed email for %s",
+                        order.order_no,
+                    )
+
+            return payment
 
         try:
             razorpay_payment_data = self.razorpay_client.payment.fetch(
                 razorpay_payment_id
             )
-            payment.meta_data = razorpay_payment_data
-        except Exception:
-            logger.warning(
-                f"Failed to fetch Razorpay payment details for payment_id={payment.id}",
-                exc_info=True,
+        except razorpay.errors.RazorpayError:
+            logger.exception(
+                "Failed to fetch Razorpay payment %s",
+                razorpay_payment_id,
             )
+
+            raise AppException(
+                error_code="PAYMENT_GATEWAY_ERROR",
+                message="Unable to verify payment with payment provider",
+            )
+
+        # status : string,  Razorpay docs
+        # The status of the payment. Possible values:
+        # created
+        # authorized
+        # captured
+        # refunded
+        # failed
+        if razorpay_payment_data.get("status") != "captured":
+            raise BadRequestError(
+                error_code="PAYMENT_NOT_CAPTURED",
+                message="Payment has not been captured",
+            )
+
+        payment.razorpay_payment_id = razorpay_payment_id
+        payment.razorpay_signature = razorpay_signature
+        payment.status = PaymentTransactionStatus.SUCCESS
+        payment.completed_at = datetime.now(UTC)
+        payment.meta_data = razorpay_payment_data
 
         order.payment_status = PaymentStatus.PAID
         order.order_status = OrderStatus.CONFIRMED
@@ -217,13 +260,28 @@ class PaymentService:
         await self.session.commit()
         await self.session.refresh(payment)
 
-        await self._publish_payment_event_safely(
-            event_type="payment_successful",
+        await self._notify_payment_safely(
+            title="Payment Successful",
+            message=f"Payment for order #{order.order_no} was successful.",
             user_id=payment.user_id,
             order_num=order.order_no,
             amount=payment.amount,
-            status=payment.status,
-            provider=payment.provider,
         )
+
+        if payment.user:
+            try:
+                send_mail_task.delay(
+                    recipients=[payment.user.email],
+                    subject=f"Payment for #{order.order_no} was successful",
+                    body=payment_successful_email_html(
+                        user=payment.user,
+                        order=order,
+                    ),
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue payment success email for %s",
+                    order.order_no,
+                )
 
         return payment

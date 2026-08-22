@@ -1,4 +1,5 @@
 from app.auth.model import User
+from app.orders.model import Order
 
 
 def verification_email_html(link: str) -> str:
@@ -47,4 +48,193 @@ def password_reset_confirmation_email_html(user: User) -> str:
     <p>Hello {user.first_name},</p>
     <p>Your Pizza Box account password was successfully updated.</p>
     <p style="color:#e74c3c;">If this wasn’t you, please contact our support immediately.</p>
+    """
+
+
+def order_confirmation_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#2980b9;">Order Placed Successfully</h1>
+    <p>Hello {user.first_name},</p>
+    <p>Thank you for ordering from Pizza Box!</p>
+    <p>Your order <strong>#{order.order_no}</strong> has been received successfully.</p>
+
+    <p>
+        <strong>Order Total:</strong> ₹{order.total:.2f}
+    </p>
+
+    <p>
+        We’ll keep you updated as your order progresses.
+    </p>
+
+    <p>Thank you for choosing Pizza Box!</p>
+    """
+
+
+def payment_successful_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#27ae60;">Payment Successful</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        Your payment for order <strong>#{order.order_no}</strong>
+        was successfully received.
+    </p>
+
+    <p>
+        <strong>Amount Paid:</strong> ₹{order.total:.2f}
+    </p>
+
+    <p>
+        Your order is now confirmed and will be prepared shortly.
+    </p>
+
+    <p>Thank you for choosing Pizza Box!</p>
+    """
+
+
+def payment_failed_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#e74c3c;">Payment Failed</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        We were unable to process the payment for order
+        <strong>#{order.order_no}</strong>.
+    </p>
+
+    <p>
+        <strong>Amount:</strong> ₹{order.total:.2f}
+    </p>
+
+    <p>
+        Please try the payment again to complete your order.
+    </p>
+
+    <p>
+        If you believe this was a mistake, please contact our support team.
+    </p>
+    """
+
+
+def order_confirmed_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#27ae60;">Order Confirmed</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        Your order <strong>#{order.order_no}</strong> has been confirmed.
+    </p>
+
+    <p>
+        <strong>Order Total:</strong> ₹{order.total:.2f}
+    </p>
+
+    <p>
+        We’ll start preparing your order shortly.
+    </p>
+
+    <p>Thank you for ordering from Pizza Box!</p>
+    """
+
+
+def order_preparing_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#f39c12;">Your Order Is Being Prepared</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        Great news! Your order <strong>#{order.order_no}</strong>
+        is now being prepared.
+    </p>
+
+    <p>
+        We'll let you know when your order is on its way.
+    </p>
+
+    <p>Thank you for choosing Pizza Box!</p>
+    """
+
+
+def order_out_for_delivery_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#2980b9;">Your Order Is On Its Way!</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        Your order <strong>#{order.order_no}</strong>
+        is out for delivery.
+    </p>
+
+    <p>
+        Please keep your phone available in case the delivery partner
+        needs to contact you.
+    </p>
+
+    <p>Enjoy your meal!</p>
+    """
+
+
+def order_delivered_email_html(
+    user: User,
+    order: Order,
+) -> str:
+    return f"""
+    <h1 style="color:#27ae60;">Order Delivered</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        Your order <strong>#{order.order_no}</strong>
+        has been delivered successfully.
+    </p>
+
+    <p>
+        We hope you enjoyed your meal!
+    </p>
+
+    <p>Thank you for choosing Pizza Box.</p>
+    """
+
+
+def order_cancelled_email_html(
+    user: User,
+    order: Order,
+    reason: str | None = None,
+) -> str:
+    reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
+
+    return f"""
+    <h1 style="color:#e74c3c;">Order Cancelled</h1>
+    <p>Hello {user.first_name},</p>
+
+    <p>
+        Your order <strong>#{order.order_no}</strong>
+        has been cancelled.
+    </p>
+
+    {reason_html}
+
+    <p>
+        If you have any questions about this cancellation,
+        please contact our support team.
+    </p>
+
+    <p>We apologize for the inconvenience.</p>
     """

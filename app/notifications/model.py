@@ -1,26 +1,27 @@
-from app.core.base import Base
-from sqlalchemy import (
-    Uuid,
-    TIMESTAMP,
-    func,
-    ForeignKey,
-    String,
-    JSON,
-    Enum,
-    Boolean,
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import ARRAY
+import enum
 import uuid
 from datetime import datetime
-import enum
 from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    JSON,
+    TIMESTAMP,
+    Boolean,
+    Enum,
+    ForeignKey,
+    String,
+    Uuid,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.base import Base
 
 if TYPE_CHECKING:
     from app.auth.model import User
 
 
-class NotificationType(enum.Enum):
+class NotificationType(str, enum.Enum):
     ORDER_UPDATE = "order_update"
     PAYMENT_UPDATE = "payment_update"
     DELIVERY_UPDATE = "delivery_update"
@@ -29,12 +30,7 @@ class NotificationType(enum.Enum):
     SYSTEM = "system"
 
 
-class NotificationChannel(enum.Enum):
-    WEBSOCKET = "websocket"
-    EMAIL = "email"
-
-
-class NotificationPriority(enum.Enum):
+class NotificationPriority(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -52,7 +48,9 @@ class Notification(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"),
         nullable=False,
+        ondelete="CASCADE",
     )
+    user: Mapped["User"] = relationship(back_populates="notifications")
 
     title: Mapped[str] = mapped_column(
         String(255),
@@ -62,7 +60,10 @@ class Notification(Base):
         String(500),
         nullable=False,
     )
-    data: Mapped[dict] = mapped_column(JSON, nullable=True)
+    payload: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=True,
+    )
 
     notification_type: Mapped[NotificationType] = mapped_column(
         Enum(NotificationType),
@@ -73,23 +74,18 @@ class Notification(Base):
         default=NotificationPriority.MEDIUM,
         nullable=False,
     )
-    channels: Mapped[list[NotificationChannel]] = mapped_column(
-        ARRAY(Enum(NotificationChannel)),
-        default=list,
-        nullable=False,
-    )
 
     is_read: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
         nullable=False,
     )
-    read_at: Mapped[datetime] = mapped_column(
+    read_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=True,
     )
 
-    expires_at: Mapped[datetime] = mapped_column(
+    expires_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=True,
     )
@@ -99,14 +95,6 @@ class Notification(Base):
         server_default=func.now(),
         nullable=False,
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-
-    user: Mapped["User"] = relationship("User", back_populates="notifications")
 
     def __repr__(self):
         return f"<Notification {self.id} - {self.notification_type} for user {self.user_id}>"

@@ -12,9 +12,15 @@ from app.address.service import AddressService
 from app.auth.model import User
 from app.cart.service import CartService
 from app.core.exceptions import BadRequestError, EntityNotFoundError
-from app.notifications.events import publish_order_event
-from app.notifications.schema import OrderEventData
+from app.notifications.dispatcher import notification_dispatcher
+from app.notifications.model import NotificationPriority, NotificationType
 from app.store_config.service import StoreConfigService
+from app.utils.logger import logger
+from app.utils.templates.email_templates import (
+    order_cancelled_email_html,
+    order_confirmation_email_html,
+)
+from app.workers.email_tasks import send_mail_task
 
 from .model import (
     Order,
@@ -177,19 +183,63 @@ class OrderService:
 
         await self.session.commit()
 
-        await publish_order_event(
-            event_type="order_created",
-            data=OrderEventData(
-                order_id=order.id,
-                order_num=order.order_no,
-                user_id=order.user_id,
-                status=order.order_status,
-                payment_status=order.payment_status,
-                total_amount=order.total,
-            ),
-        )
-
         loaded_order = await self.load_order(order.id)
+
+        if loaded_order.payment_method == PaymentMethod.COD:
+            title = "Order Placed!"
+            message = f"Your order #{loaded_order.order_no} has been placed."
+        else:
+            title = "Payment Required"
+            message = (
+                f"Your order #{loaded_order.order_no} has been created. "
+                "Complete payment to confirm your order."
+            )
+        try:
+            await notification_dispatcher.notify_user(
+                user_id=loaded_order.user_id,
+                notification_type=NotificationType.ORDER_UPDATE,
+                title=title,
+                message=message,
+                priority=NotificationPriority.HIGH,
+                payload={
+                    "order_id": str(loaded_order.id),
+                    "order_num": loaded_order.order_no,
+                },
+                expires_in_hours=48,
+            )
+
+            await notification_dispatcher.notify_admins(
+                event_type=NotificationType.ORDER_UPDATE,
+                title="New Order",
+                message=f"New order {loaded_order.order_no} received",
+                priority=NotificationPriority.HIGH,
+                payload={
+                    "order_id": str(loaded_order.id),
+                    "order_num": loaded_order.order_no,
+                    "total_amount": loaded_order.total,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to dispatch order-created notifications for %s",
+                loaded_order.order_no,
+            )
+
+        try:
+            send_mail_task.delay(
+                recipients=[user.email],
+                subject=f"Order #{loaded_order.order_no} placed",
+                body=order_confirmation_email_html(
+                    user=user,
+                    order=loaded_order,
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue order confirmation email for %s",
+                loaded_order.order_no,
+            )
+
         return loaded_order
 
     async def get_user_orders(
@@ -294,18 +344,55 @@ class OrderService:
         await self.session.commit()
         await self.session.refresh(order)
 
-        await publish_order_event(
-            event_type="order_cancelled",
-            data=OrderEventData(
-                order_id=order.id,
-                order_num=order.order_no,
+        try:
+            await notification_dispatcher.notify_user(
                 user_id=order.user_id,
-                status=OrderStatus.CANCELLED,
-                payment_status=order.payment_status,
-                total_amount=order.total,
-                reason="User cancelled before preparation",
-            ),
-        )
+                notification_type=NotificationType.ORDER_UPDATE,
+                title="Order cancellation",
+                message="Your order has been cancelled",
+                priority=NotificationPriority.HIGH,
+                payload={
+                    "order_id": str(order.id),
+                    "order_num": order.order_no,
+                    "reason": "User cancelled before preparation",
+                },
+                expires_in_hours=48,
+            )
+
+            await notification_dispatcher.notify_admins(
+                event_type=NotificationType.ORDER_UPDATE,
+                title="Order cancelled",
+                message=f"Order {order.order_no} has been cancelled",
+                priority=NotificationPriority.HIGH,
+                payload={
+                    "order_id": str(order.id),
+                    "order_num": order.order_no,
+                    "total_amount": order.total,
+                    "status": OrderStatus.CANCELLED,
+                    "reason": "User cancelled before preparation",
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to dispatch order-cancelled notifications for %s",
+                order.order_no,
+            )
+
+        try:
+            send_mail_task.delay(
+                recipients=[order.user.email],
+                subject=f"Order #{order.order_no} cancelled",
+                body=order_cancelled_email_html(
+                    user=order.user,
+                    order=order,
+                    reason="User cancelled before preparation",
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue order cancellation email for %s",
+                order.order_no,
+            )
 
         return order
 
@@ -383,25 +470,47 @@ class OrderService:
             )
 
         order.order_status = order_status
+
         await self.session.commit()
 
         status_message = ORDER_STATUS_MESSAGES.get(
             order_status, f"Order status updated to {order_status.value}"
         )
-        await publish_order_event(
-            event_type="order_status_changed",
-            data=OrderEventData(
-                order_id=order.id,
-                order_num=order.order_no,
-                user_id=order.user_id,
-                status=order_status,
-                status_message=status_message,
-                payment_status=order.payment_status,
-                total_amount=order.total,
-            ),
-        )
 
         loaded_order = await self.load_order(order.id)
+
+        try:
+            await notification_dispatcher.notify_user(
+                user_id=loaded_order.user_id,
+                notification_type=NotificationType.ORDER_UPDATE,
+                title="Order status changed",
+                message=status_message,
+                priority=NotificationPriority.MEDIUM,
+                payload={
+                    "order_id": str(loaded_order.id),
+                    "order_num": loaded_order.order_no,
+                    "status": order_status,
+                },
+                expires_in_hours=48,
+            )
+
+            await notification_dispatcher.notify_admins(
+                event_type=NotificationType.ORDER_UPDATE,
+                title="Order status update",
+                message=f"Order {loaded_order.order_no} status has been updated",
+                priority=NotificationPriority.MEDIUM,
+                payload={
+                    "order_id": str(loaded_order.id),
+                    "order_num": loaded_order.order_no,
+                    "status": order_status,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to dispatch order-status-update notifications for %s",
+                loaded_order.order_no,
+            )
+
         return loaded_order
 
     def _build_queries(

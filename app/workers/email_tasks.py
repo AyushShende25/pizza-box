@@ -1,7 +1,8 @@
 from asgiref.sync import async_to_sync
+from pydantic import EmailStr
+
 from app.core.celery_app import celery_app
 from app.libs.fastmail import FastMailService
-from pydantic import EmailStr
 
 
 @celery_app.task()

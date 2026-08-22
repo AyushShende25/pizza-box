@@ -1,69 +1,91 @@
-from typing import List, Dict
+from uuid import UUID
+
 from fastapi import WebSocket
+
 from app.utils.logger import logger
 
 
-class NotificationsManager:
+class WSManager:
     def __init__(self):
-        self.active_user_connections: Dict[str, List[WebSocket]] = {}
-        self.active_admin_connections: List[WebSocket] = []
+        # Maps user_id -> set of active WebSockets
+        self._user_connections: dict[str, set[WebSocket]] = {}
+        self._admin_connections: set[WebSocket] = set()
 
-    async def connect_user(self, user_id: str, websocket: WebSocket):
+    async def connect_user(
+        self,
+        user_id: UUID | str,
+        websocket: WebSocket,
+    ) -> None:
         await websocket.accept()
-        self.active_user_connections.setdefault(user_id, []).append(websocket)
+
+        key = str(user_id)
+
+        if key not in self._user_connections:
+            self._user_connections[key] = set()
+        self._user_connections[key].add(websocket)
+
         logger.info(
-            f"WS connected: user={user_id}, "
-            f"total={len(self.active_user_connections[user_id])}"
+            f"[WS] Connected user={key} (Total: {len(self._user_connections[key])})"
         )
 
-    async def connect_admin(self, websocket: WebSocket):
+    async def disconnect_user(
+        self,
+        user_id: UUID | str,
+        websocket: WebSocket,
+    ) -> None:
+        key = str(user_id)
+
+        if key in self._user_connections:
+            self._user_connections[key].discard(websocket)
+
+            # If empty then remove the map
+            if not self._user_connections[key]:
+                del self._user_connections[key]
+
+        logger.info(f"[WS] Disconnected user={key}")
+
+    async def connect_admin(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        self.active_admin_connections.append(websocket)
-        logger.info(f"WS connected: ADMIN, total={len(self.active_admin_connections)}")
 
-    async def send_to_user(self, user_id: str, message: dict):
-        connections = self.active_user_connections.get(user_id, [])
-        await self._safe_send(connections, message)
+        self._admin_connections.add(websocket)
 
-    async def send_to_admin(self, message: dict):
-        await self._safe_send(self.active_admin_connections, message)
+        logger.info(f"[WS] Connected admin (Total: {len(self._admin_connections)})")
 
-    async def _safe_send(self, connections: List[WebSocket], message: dict):
-        disconnected = []
-        for ws in connections:
+    async def disconnect_admin(self, websocket: WebSocket) -> None:
+        self._admin_connections.discard(websocket)
+
+        logger.info(f"[WS] Disconnected admin (Total: {len(self._admin_connections)})")
+
+    async def send_to_user(self, user_id: UUID | str, message: dict) -> None:
+        key = str(user_id)
+
+        sockets = self._user_connections.get(key)
+
+        if not sockets:
+            return
+
+        await self._safe_broadcast(sockets, message)
+
+    async def send_to_admin(self, message: dict) -> None:
+        if not self._admin_connections:
+            return
+
+        await self._safe_broadcast(self._admin_connections, message)
+
+    async def _safe_broadcast(self, sockets: set[WebSocket], message: dict) -> None:
+        dead_sockets = []
+        for ws in list(sockets):
             try:
                 await ws.send_json(message)
             except Exception:
-                disconnected.append(ws)
+                dead_sockets.append(ws)
 
-        for ws in disconnected:
-            connections.remove(ws)
-
-    async def disconnect_user(self, user_id: str, websocket: WebSocket):
-        connections = self.active_user_connections.get(user_id)
-        if not connections:
-            return
-
-        if websocket in connections:
-            connections.remove(websocket)
-
-        if not connections:
-            del self.active_user_connections[user_id]
-
-        logger.info(f"WS disconnected: user={user_id}")
-
-    async def disconnect_admin(self, websocket: WebSocket):
-        if websocket in self.active_admin_connections:
-            self.active_admin_connections.remove(websocket)
-
-        logger.info("WS disconnected: ADMIN")
-
-    async def broadcast_to_all_users(self, message: dict):
-        all_connections = []
-        for connections in self.active_user_connections.values():
-            all_connections.extend(connections)
-
-        await self._safe_send(all_connections, message)
+        for ws in dead_sockets:
+            sockets.discard(ws)
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
 
-notifications_manager = NotificationsManager()
+ws_manager = WSManager()

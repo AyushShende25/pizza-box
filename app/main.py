@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,26 +9,25 @@ from app.cart.routes import cart_router
 from app.core.config import settings
 from app.core.exception_handlers import setup_exception_handlers
 from app.menu.routes import menu_router
-from app.notifications.events import start_event_listener
+from app.notifications.listener import notification_listener
+from app.notifications.pubsub import pubsub_service
 from app.notifications.routes import notifications_router
 from app.orders.routes import orders_router
 from app.payments.routes import payments_router
 from app.store_config.routes import store_config_router
 from app.uploads.routes import uploads_router
-from app.utils.logger import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    listener_task = asyncio.create_task(start_event_listener())
+    # Startup
+    await notification_listener.start()
 
     yield
 
-    listener_task.cancel()
-    try:
-        await listener_task
-    except asyncio.CancelledError:
-        logger.info("Event listener stopped")
+    # Shutdown
+    await notification_listener.stop()
+    await pubsub_service.close()
 
 
 app = FastAPI(
