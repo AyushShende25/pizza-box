@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - postgresql
       - redis
@@ -22,7 +22,7 @@ services:
     container_name: pizza-box-celery-worker
     command: /app/.venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=info
     env_file:
-      - .env
+      - .env.docker
     depends_on:
       - redis
       - postgresql
@@ -34,7 +34,7 @@ services:
     image: postgres:17
     container_name: pizza-box-postgres
     env_file:
-      - .env
+      - .env.docker
     ports:
       - "5432:5432"
     volumes:
@@ -46,6 +46,8 @@ services:
   redis:
       image: redis/redis-stack:7.4.0-v8
       container_name: pizza-box-redis
+      env_file:
+        - .env.docker
       volumes:
         - redis_data:/data
       ports:
