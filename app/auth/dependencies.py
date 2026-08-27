@@ -46,7 +46,7 @@ class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
 
         if auth_header:
             scheme, param = get_authorization_scheme_param(auth_header)
-            if scheme.lower() == "bearer":
+            if scheme.lower() == "bearer" and param:
                 token = param
         if not token:
             token = request.cookies.get("access_token")
@@ -57,7 +57,6 @@ class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
                     error_code="MISSING_TOKEN",
                 )
             return None
-
         return token
 
 

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import app.core.model_registry as _models  # noqa: F401
 from app.address.routes import address_router
 from app.auth.routes import auth_router
 from app.cart.routes import cart_router
@@ -19,7 +20,7 @@ from app.uploads.routes import uploads_router
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     # Startup
     await notification_listener.start()
 

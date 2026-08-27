@@ -2,13 +2,16 @@ import enum
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DECIMAL, JSON, TIMESTAMP, Enum, ForeignKey, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.auth.model import User
 from app.core.base import Base
-from app.orders.model import Order
+
+if TYPE_CHECKING:
+    from app.auth.model import User
+    from app.orders.model import Order
 
 
 class PaymentProvider(str, enum.Enum):
@@ -36,10 +39,7 @@ class Payment(Base):
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
     )
-    order: Mapped["Order"] = relationship(
-        "Order",
-        back_populates="payments",
-    )
+    order: Mapped["Order"] = relationship(back_populates="payments")
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),

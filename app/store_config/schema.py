@@ -1,6 +1,5 @@
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID
 
 from pydantic import Field
 
@@ -19,7 +18,7 @@ class StoreConfigBase(BaseSchema):
 
 
 class StoreConfigResponse(StoreConfigBase):
-    id: UUID
+    id: int
     base_delivery_fee: Decimal
     tax_rate: Decimal
     per_km_fee: Decimal

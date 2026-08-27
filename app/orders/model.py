@@ -49,7 +49,7 @@ class OrderItemTopping(Base):
     order_item: Mapped["OrderItem"] = relationship(back_populates="toppings")
 
     topping_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("topping.id", ondelete="SET NULL"),
+        ForeignKey("toppings.id", ondelete="SET NULL"),
         nullable=True,
     )
     topping_name: Mapped[str] = mapped_column(
@@ -82,15 +82,15 @@ class OrderItem(Base):
     order: Mapped["Order"] = relationship(back_populates="order_items")
 
     pizza_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("pizza.id", ondelete="SET NULL"),
+        ForeignKey("pizzas.id", ondelete="SET NULL"),
         nullable=True,
     )
     size_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("size.id", ondelete="SET NULL"),
+        ForeignKey("sizes.id", ondelete="SET NULL"),
         nullable=True,
     )
     crust_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("crust.id", ondelete="SET NULL"),
+        ForeignKey("crusts.id", ondelete="SET NULL"),
         nullable=True,
     )
     toppings: Mapped[list["OrderItemTopping"]] = relationship(

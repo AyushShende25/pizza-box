@@ -63,6 +63,7 @@ async def verify_email(
     return {"message": "User account verified successfully."}
 
 
+# Use formdata with swagger and json with frontend
 @auth_router.post(
     "/login",
     status_code=status.HTTP_200_OK,
@@ -93,7 +94,7 @@ async def login(
         )
 
     user = await auth_service.authenticate_user(
-        data=UserLogin(email=email, password=password)
+        data=UserLogin(email=str(email), password=str(password))
     )
 
     access_token, refresh_token = await auth_service.generate_tokens(

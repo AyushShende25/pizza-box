@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from app.auth.model import UserRole
 from app.core.base_schema import BaseSchema
@@ -40,8 +40,9 @@ class RegistrationResponse(BaseSchema):
     user: UserResponse
 
 
-class LoginResponse(BaseSchema):
-    class UserInfo(BaseSchema):
+# Importing from basechema causes a bug since the oauth endpoint expects in snake_case and baseschema modifies to camelCase
+class LoginResponse(BaseModel):
+    class UserInfo(BaseModel):
         id: uuid.UUID
         email: EmailStr
 

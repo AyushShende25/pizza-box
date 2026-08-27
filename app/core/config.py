@@ -41,8 +41,6 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_HOURS: int = 24
 
     # Bucket storage settings
-    BUCKET_ACCESS_KEY_ID: str
-    BUCKET_SECRET_ACCESS_KEY: SecretStr
     BUCKET_CUSTOM_DOMAIN: str
     BUCKET_NAME: str
     BUCKET_REGION_NAME: str
@@ -52,7 +50,7 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: SecretStr
 
     model_config = SettingsConfigDict(
-        env_file=".env.local",
+        env_file=".env",
         extra="ignore",
     )
 
