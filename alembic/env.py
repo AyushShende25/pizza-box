@@ -6,15 +6,17 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from app.core.config import settings
+from app.address import model as address_models  # noqa: F401
+from app.auth import model as auth_models  # noqa: F401
+from app.cart import model as cart_models  # noqa: F401
 from app.core.base import Base
-from app.auth import model as auth_models
-from app.menu import model as menu_models
-from app.cart import model as cart_models
-from app.address import model as address_models
-from app.orders import model as order_models
-from app.payments import model as payments_models
-from app.notifications import model as notifications_models
+from app.core.config import settings
+from app.menu import model as menu_models  # noqa: F401
+from app.notifications import model as notifications_models  # noqa: F401
+from app.orders import model as order_models  # noqa: F401
+from app.payments import model as payments_models  # noqa: F401
+from app.store_config import model as store_config_models  # noqa: F401
+
 # Import all models for automatic migrations
 
 database_url = settings.DATABASE_URL
